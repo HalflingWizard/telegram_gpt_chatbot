@@ -7,6 +7,8 @@ from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
+DEFAULT_WELCOME_STICKER = "CAACAgQAAxkBAAEQ8fVp4vqqCT9aBQmZK2iVdB1-ILgauwAC_gwAAhexSFBbzkvZt_rnPzsE"
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -46,7 +48,7 @@ def load_settings() -> Settings:
         telegram_file_size_limit_bytes=int(
             float(os.getenv("TELEGRAM_FILE_SIZE_LIMIT_MB", "20")) * 1024 * 1024
         ),
-        default_sticker_file_id=os.getenv("DEFAULT_STICKER_FILE_ID") or None,
+        default_sticker_file_id=os.getenv("DEFAULT_STICKER_FILE_ID", DEFAULT_WELCOME_STICKER),
     )
 
 

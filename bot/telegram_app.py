@@ -22,14 +22,15 @@ from bot.handlers.chat_commands import (
     chat_command,
     currentchat_command,
     deletechat_command,
+    history_callback,
     listchats_callback,
     listchats_command,
     newchat_command,
+    preferences_command,
 )
 from bot.handlers.errors import error_handler
 from bot.handlers.media_messages import handle_document_message, handle_photo_message
 from bot.handlers.start import help_command, start_command
-from bot.handlers.stickers import sticker_command
 from bot.handlers.text_messages import handle_text_message
 from bot.logging_setup import configure_logging
 from bot.services.auth_service import AuthService
@@ -114,6 +115,14 @@ class ServiceContainer:
             },
         )
 
+    async def send_default_sticker(self, bot, telegram_chat_id: int) -> None:
+        """Send the configured default sticker when available."""
+        if self.settings.default_sticker_file_id:
+            await bot.send_sticker(
+                chat_id=telegram_chat_id,
+                sticker=self.settings.default_sticker_file_id,
+            )
+
 
 def build_application(settings: Settings | None = None) -> Application:
     """Create and configure the Telegram application."""
@@ -150,8 +159,9 @@ def build_application(settings: Settings | None = None) -> Application:
     application.add_handler(CommandHandler("listchats", listchats_command))
     application.add_handler(CommandHandler("currentchat", currentchat_command))
     application.add_handler(CommandHandler("deletechat", deletechat_command))
-    application.add_handler(CommandHandler("sticker", sticker_command))
+    application.add_handler(CommandHandler("preferences", preferences_command))
     application.add_handler(CallbackQueryHandler(listchats_callback, pattern=r"^chat:"))
+    application.add_handler(CallbackQueryHandler(history_callback, pattern=r"^history:"))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo_message))
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document_message))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
@@ -159,6 +169,8 @@ def build_application(settings: Settings | None = None) -> Application:
 
     LOGGER.info("Telegram application configured")
     return application
+
+
 def run() -> None:
     """Start the bot in long-polling mode."""
     application = build_application()

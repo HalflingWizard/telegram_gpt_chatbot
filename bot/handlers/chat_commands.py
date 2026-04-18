@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-# Accepts: /newchat, /chat, /listchats, /currentchat, /deletechat, and chat list callbacks.
-# Calls: AuthService, ChatService, FormattingService, and validator helpers.
+# Accepts: /newchat, /chat, /listchats, /currentchat, /deletechat, /preferences, and callback updates.
+# Calls: AuthService, ChatService, FormattingService, preference storage, and validator helpers.
 # Produces: User-visible chat management messages and inline keyboard browsing.
 
 from telegram import CallbackQuery, Update
@@ -29,6 +29,7 @@ async def newchat_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         chat_db_id=chat.id,
     )
     await update.effective_message.reply_text(services.formatting_service.format_chat_created(chat))
+    await services.send_default_sticker(context.bot, update.effective_chat.id)
 
 
 async def currentchat_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -74,6 +75,10 @@ async def chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         chat_db_id=chat.id,
     )
     await update.effective_message.reply_text(services.formatting_service.format_chat_switched(chat))
+    await update.effective_message.reply_text(
+        services.formatting_service.format_history_prompt(chat),
+        reply_markup=services.formatting_service.build_history_prompt_keyboard(chat.chat_public_id),
+    )
 
 
 async def listchats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -118,6 +123,32 @@ async def deletechat_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.effective_message.reply_text(services.formatting_service.format_chat_deleted(chat))
 
 
+async def preferences_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show, set, or clear saved user preferences."""
+    services = get_service_container(context)
+    if not await services.authorize_update(update):
+        return
+    if not context.args:
+        current = services.auth_service.get_preferences(update.effective_user.id)
+        await update.effective_message.reply_text(
+            services.formatting_service.format_preferences(current)
+        )
+        return
+
+    raw_preferences = " ".join(context.args).strip()
+    if raw_preferences.lower() in {"clear", "none", "reset"}:
+        services.auth_service.set_preferences(update.effective_user.id, None)
+        await update.effective_message.reply_text(
+            services.formatting_service.format_preferences_cleared()
+        )
+        return
+
+    stored = services.auth_service.set_preferences(update.effective_user.id, raw_preferences)
+    await update.effective_message.reply_text(
+        services.formatting_service.format_preferences_updated(stored or raw_preferences)
+    )
+
+
 async def listchats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle inline keyboard chat-selection callbacks."""
     services = get_service_container(context)
@@ -140,3 +171,26 @@ async def listchats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         chat_db_id=chat.id,
     )
     await query.edit_message_text(services.formatting_service.format_chat_switched(chat))
+    await query.message.reply_text(
+        services.formatting_service.format_history_prompt(chat),
+        reply_markup=services.formatting_service.build_history_prompt_keyboard(chat.chat_public_id),
+    )
+
+
+async def history_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle transcript preview callbacks after a chat is loaded."""
+    services = get_service_container(context)
+    if not await services.authorize_update(update):
+        return
+    query: CallbackQuery = update.callback_query
+    await query.answer()
+
+    _, action, public_id = query.data.split(":", 2)
+    if action == "no":
+        await query.edit_message_text("👌 No problem. You can continue the chat now.")
+        return
+
+    history = services.chat_service.get_chat_history(update.effective_user.id, public_id)
+    await query.edit_message_text(f"📜 Previous messages from chat {public_id}:")
+    for chunk in services.formatting_service.format_chat_history(history):
+        await query.message.reply_text(chunk)

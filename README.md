@@ -17,14 +17,16 @@ Implemented in this repository:
 - `/listchats` shows recent chats with title, chat ID, and updated time, plus inline buttons
 - `/currentchat` shows the active chat
 - `/deletechat <id>` soft deletes a chat
+- `/preferences <text>` stores per-user reply preferences
 - Text messages routed to the active chat
 - Image uploads with optional caption
 - File uploads with optional caption
 - OpenAI file uploads with `purpose="user_data"`
 - Local chat titles generated after the first user turn
+- Automatic sticker sent on `/start` and `/newchat`
+- Optional old-chat history preview after loading a saved chat
 - Whitelist-only access control
 - Structured JSON logging
-- Outgoing sticker support through `/sticker`
 - Unit tests for auth, chat service, title service, and handler behavior
 
 Deferred or partial:
@@ -62,7 +64,6 @@ telegram_gpt_chatbot/
 │   │   ├── chat_commands.py
 │   │   ├── text_messages.py
 │   │   ├── media_messages.py
-│   │   ├── stickers.py
 │   │   └── errors.py
 │   ├── services/
 │   │   ├── __init__.py
@@ -144,7 +145,7 @@ pytest
 | `LOG_LEVEL` | Yes | Logging level such as `INFO` or `DEBUG` |
 | `OPENAI_TIMEOUT_SECONDS` | No | Timeout for OpenAI requests |
 | `TELEGRAM_FILE_SIZE_LIMIT_MB` | No | Max file size accepted by this bot before Telegram download rejection |
-| `DEFAULT_STICKER_FILE_ID` | No | Telegram sticker file ID used by `/sticker` |
+| `DEFAULT_STICKER_FILE_ID` | No | Telegram sticker file ID sent automatically on `/start` and `/newchat` |
 
 ## 7. Telegram setup
 
@@ -214,7 +215,7 @@ The SQLite database has five main tables.
 `users`
 
 - One row per Telegram user known to the bot
-- Stores Telegram ID, username, and allow/deny status
+- Stores Telegram ID, username, allow/deny status, and saved user preferences
 
 `chats`
 
@@ -369,7 +370,7 @@ Migration path:
 9. Implement title generation after the first user message.
 10. Implement image input flow.
 11. Implement file upload flow.
-12. Extend sticker tooling if richer sticker behavior is needed.
+12. Extend preference handling or richer sticker behavior if needed.
 13. Add or expand tests.
 14. Keep the README current.
 15. Add a webhook deployment path if your hosting environment prefers it.

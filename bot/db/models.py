@@ -25,6 +25,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     telegram_user_id: Mapped[int] = mapped_column(Integer, unique=True, index=True)
     telegram_username: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    preferences: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_allowed: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(

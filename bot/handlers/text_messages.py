@@ -25,11 +25,11 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     active_chat = services.chat_service.get_active_chat(update.effective_user.id)
     if active_chat is None:
-        await update.effective_message.reply_text("No active chat. Use /newchat or /chat <id>.")
+        await update.effective_message.reply_text("⚠️ No active chat. Use /newchat or /chat <id>.")
         return
     if active_chat.state is None:
         await update.effective_message.reply_text(
-            "That chat could not be restored. Start a new chat with /newchat."
+            "⚠️ That chat could not be restored. Start a new chat with /newchat."
         )
         return
 
@@ -56,6 +56,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             prompt_text=user_text,
             attachments=None,
             previous_response_id=active_chat.state.last_openai_response_id,
+            user_preferences=services.auth_service.get_preferences(update.effective_user.id),
         )
     except services.openai_timeout_error:
         services.log_event(
@@ -67,7 +68,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             chat_public_id=active_chat.chat_public_id,
             chat_db_id=active_chat.id,
         )
-        await update.effective_message.reply_text("The model timed out. Please try again.")
+        await update.effective_message.reply_text("⏳ The model timed out. Please try again.")
         return
     except services.openai_error:
         services.log_event(
@@ -81,7 +82,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             exc_info=True,
         )
         await update.effective_message.reply_text(
-            "The bot could not get a response right now. Please try again."
+            "⚠️ The bot could not get a response right now. Please try again."
         )
         return
 

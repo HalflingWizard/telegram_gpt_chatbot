@@ -57,6 +57,7 @@ class OpenAIService:
         prompt_text: str | None,
         attachments: list[OpenAIInputAttachment] | None,
         previous_response_id: str | None,
+        user_preferences: str | None = None,
     ) -> AssistantReply:
         """Create an assistant response for the current user turn."""
         content: list[dict[str, Any]] = []
@@ -76,17 +77,23 @@ class OpenAIService:
                     {
                         "type": "input_file",
                         "file_id": attachment.openai_file_id,
-                        "filename": attachment.filename,
                     }
                 )
         if not content:
             content.append({"type": "input_text", "text": "Continue."})
 
+        instructions = DEVELOPER_INSTRUCTIONS
+        if user_preferences:
+            instructions = (
+                f"{instructions}\n\nUser preferences:\n"
+                f"{user_preferences}\n\nFollow these preferences unless they conflict with safety."
+            )
+
         try:
             response = await self.client.responses.create(
                 model=self.settings.openai_main_model,
                 reasoning={"effort": self.settings.openai_reasoning_effort},
-                instructions=DEVELOPER_INSTRUCTIONS,
+                instructions=instructions,
                 previous_response_id=previous_response_id,
                 input=[{"role": "user", "content": content}],
             )

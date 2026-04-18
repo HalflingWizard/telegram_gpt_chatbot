@@ -18,6 +18,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if not await services.authorize_update(update):
         return
     await update.effective_message.reply_text(services.formatting_service.format_start_text())
+    await services.send_default_sticker(context.bot, update.effective_chat.id)
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

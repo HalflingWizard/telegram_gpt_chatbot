@@ -3,7 +3,7 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from bot.handlers.chat_commands import currentchat_command
+from bot.handlers.chat_commands import currentchat_command, preferences_command
 from bot.handlers.text_messages import handle_text_message
 
 
@@ -12,7 +12,15 @@ class FakeFormattingService:
 
     def format_current_chat(self, chat) -> str:
         """Return a fixed message."""
-        return "No active chat. Use /newchat or /chat <id>."
+        return "⚠️ No active chat. Use /newchat or /chat <id>."
+
+    def format_preferences(self, preferences) -> str:
+        """Return a fixed preference message."""
+        return "⚙️ No preferences saved yet. Use /preferences <text> to add them."
+
+    def format_preferences_updated(self, preferences) -> str:
+        """Return a fixed preference update message."""
+        return f"✅ Preferences saved.\n\n{preferences}"
 
 
 class FakeServices:
@@ -21,6 +29,10 @@ class FakeServices:
     def __init__(self) -> None:
         """Initialize fake dependencies."""
         self.chat_service = SimpleNamespace(get_active_chat=lambda user_id: None)
+        self.auth_service = SimpleNamespace(
+            get_preferences=lambda user_id: None,
+            set_preferences=lambda user_id, preferences: preferences,
+        )
         self.formatting_service = FakeFormattingService()
         self.authorize_update = AsyncMock(return_value=True)
 
@@ -51,7 +63,7 @@ async def test_text_handler_requires_active_chat() -> None:
     await handle_text_message(update, context)
 
     update.effective_message.reply_text.assert_awaited_once_with(
-        "No active chat. Use /newchat or /chat <id>."
+        "⚠️ No active chat. Use /newchat or /chat <id>."
     )
 
 
@@ -64,5 +76,19 @@ async def test_currentchat_reports_no_active_chat() -> None:
     await currentchat_command(update, context)
 
     update.effective_message.reply_text.assert_awaited_once_with(
-        "No active chat. Use /newchat or /chat <id>."
+        "⚠️ No active chat. Use /newchat or /chat <id>."
+    )
+
+
+async def test_preferences_command_saves_preferences() -> None:
+    """The preferences command should persist provided text."""
+    services = FakeServices()
+    update = make_update()
+    context = make_context(services)
+    context.args = ["Reply", "briefly"]
+
+    await preferences_command(update, context)
+
+    update.effective_message.reply_text.assert_awaited_once_with(
+        "✅ Preferences saved.\n\nReply briefly"
     )

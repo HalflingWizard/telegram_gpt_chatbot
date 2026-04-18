@@ -31,3 +31,17 @@ class AuthService:
     def is_allowed(self, telegram_user_id: int, telegram_username: str | None) -> bool:
         """Return whether a Telegram user may use the bot."""
         return self.ensure_user(telegram_user_id, telegram_username)
+
+    def get_preferences(self, telegram_user_id: int) -> str | None:
+        """Return saved preferences for a Telegram user."""
+        with session_scope(self.session_factory) as session:
+            return UserRepository(session).get_preferences(telegram_user_id)
+
+    def set_preferences(self, telegram_user_id: int, preferences: str | None) -> str | None:
+        """Save preferences for a Telegram user and return the stored value."""
+        normalized = preferences.strip() if preferences else None
+        if normalized == "":
+            normalized = None
+        with session_scope(self.session_factory) as session:
+            user = UserRepository(session).set_preferences(telegram_user_id, normalized)
+            return user.preferences if user else None

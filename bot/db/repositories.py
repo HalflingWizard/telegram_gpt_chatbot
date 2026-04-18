@@ -43,6 +43,20 @@ class UserRepository:
         self.session.flush()
         return user
 
+    def get_preferences(self, telegram_user_id: int) -> str | None:
+        """Return saved user preferences."""
+        user = self.get_by_telegram_user_id(telegram_user_id)
+        return user.preferences if user else None
+
+    def set_preferences(self, telegram_user_id: int, preferences: str | None) -> User | None:
+        """Persist user preferences."""
+        user = self.get_by_telegram_user_id(telegram_user_id)
+        if user is None:
+            return None
+        user.preferences = preferences
+        user.updated_at = datetime.now(timezone.utc)
+        return user
+
 
 class ChatRepository:
     """CRUD operations for chats and chat state."""
@@ -212,3 +226,13 @@ class MessageRepository:
         self.session.add(attachment)
         self.session.flush()
         return attachment
+
+    def list_messages_for_chat(self, chat_id: int) -> list[Message]:
+        """Return chat messages in chronological order with attachments preloaded."""
+        result = self.session.scalars(
+            select(Message)
+            .where(Message.chat_id == chat_id)
+            .options(joinedload(Message.attachments))
+            .order_by(Message.created_at.asc(), Message.id.asc())
+        )
+        return list(result.unique())

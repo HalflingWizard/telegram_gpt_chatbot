@@ -26,11 +26,11 @@ async def handle_photo_message(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     active_chat = services.chat_service.get_active_chat(update.effective_user.id)
     if active_chat is None:
-        await update.effective_message.reply_text("No active chat. Use /newchat or /chat <id>.")
+        await update.effective_message.reply_text("⚠️ No active chat. Use /newchat or /chat <id>.")
         return
     if active_chat.state is None:
         await update.effective_message.reply_text(
-            "That chat could not be restored. Start a new chat with /newchat."
+            "⚠️ That chat could not be restored. Start a new chat with /newchat."
         )
         return
 
@@ -46,7 +46,7 @@ async def handle_photo_message(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     except services.openai_error:
         LOGGER.exception("OpenAI photo upload failed")
-        await update.effective_message.reply_text("The image upload failed. Please try again.")
+        await update.effective_message.reply_text("⚠️ The image upload failed. Please try again.")
         return
 
     attachments = [
@@ -98,11 +98,11 @@ async def handle_document_message(update: Update, context: ContextTypes.DEFAULT_
         return
     active_chat = services.chat_service.get_active_chat(update.effective_user.id)
     if active_chat is None:
-        await update.effective_message.reply_text("No active chat. Use /newchat or /chat <id>.")
+        await update.effective_message.reply_text("⚠️ No active chat. Use /newchat or /chat <id>.")
         return
     if active_chat.state is None:
         await update.effective_message.reply_text(
-            "That chat could not be restored. Start a new chat with /newchat."
+            "⚠️ That chat could not be restored. Start a new chat with /newchat."
         )
         return
 
@@ -118,7 +118,7 @@ async def handle_document_message(update: Update, context: ContextTypes.DEFAULT_
         return
     except services.openai_error:
         LOGGER.exception("OpenAI document upload failed")
-        await update.effective_message.reply_text("The file upload failed. Please try again.")
+        await update.effective_message.reply_text("⚠️ The file upload failed. Please try again.")
         return
 
     attachments = [
@@ -187,6 +187,7 @@ async def _respond_to_media_turn(
                 if item.openai_file_id
             ],
             previous_response_id=active_chat.state.last_openai_response_id,
+            user_preferences=services.auth_service.get_preferences(update.effective_user.id),
         )
     except services.openai_timeout_error:
         services.log_event(
@@ -198,7 +199,7 @@ async def _respond_to_media_turn(
             chat_public_id=active_chat.chat_public_id,
             chat_db_id=active_chat.id,
         )
-        await update.effective_message.reply_text("The model timed out. Please try again.")
+        await update.effective_message.reply_text("⏳ The model timed out. Please try again.")
         return
     except services.openai_error:
         services.log_event(
@@ -212,7 +213,7 @@ async def _respond_to_media_turn(
             exc_info=True,
         )
         await update.effective_message.reply_text(
-            "The bot could not process that upload right now. Please try again."
+            "⚠️ The bot could not process that upload right now. Please try again."
         )
         return
 

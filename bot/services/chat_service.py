@@ -27,6 +27,16 @@ class AttachmentRecord:
     file_size: int | None
 
 
+@dataclass
+class TranscriptMessage:
+    """Serializable chat-history row for Telegram previews."""
+
+    role: str
+    text_content: str | None
+    message_type: str
+    attachment_types: list[str]
+
+
 class ChatService:
     """Encapsulate chat CRUD and message persistence."""
 
@@ -154,6 +164,30 @@ class ChatService:
         """Persist a chat title update."""
         with session_scope(self.session_factory) as session:
             ChatRepository(session).update_title(chat_id=chat_id, title=title, title_status=title_status)
+
+    def get_chat_history(self, telegram_user_id: int, chat_public_id: str) -> list[TranscriptMessage]:
+        """Return a chat transcript suitable for Telegram display."""
+        with session_scope(self.session_factory) as session:
+            user_repo = UserRepository(session)
+            chat_repo = ChatRepository(session)
+            message_repo = MessageRepository(session)
+            user = user_repo.get_by_telegram_user_id(telegram_user_id)
+            if user is None:
+                return []
+            chat = chat_repo.get_by_public_id(user.id, normalize_chat_public_id(chat_public_id))
+            if chat is None:
+                return []
+            messages = message_repo.list_messages_for_chat(chat.id)
+            return [
+                TranscriptMessage(
+                    role=message.role,
+                    text_content=message.text_content,
+                    message_type=message.message_type,
+                    attachment_types=[attachment.attachment_type for attachment in message.attachments],
+                )
+                for message in messages
+                if message.role in {"user", "assistant"}
+            ]
 
     def _generate_unique_chat_id(self, chat_repo: ChatRepository, user_id: int) -> str:
         """Generate a unique public ID for the user's chats."""
