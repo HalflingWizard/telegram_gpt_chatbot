@@ -143,6 +143,7 @@ async def test_preferences_callback_sets_pending_state() -> None:
     await preferences_callback(update, context)
 
     assert context.user_data[PREFERENCES_PENDING_ACTION_KEY] == "add"
+    update.callback_query.edit_message_text.assert_not_awaited()
     update.callback_query.message.reply_text.assert_awaited_once_with("prompt:add:None")
 
 

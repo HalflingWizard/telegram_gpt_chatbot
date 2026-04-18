@@ -230,10 +230,6 @@ async def preferences_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     if action in {"add", "edit"}:
         context.user_data[PREFERENCES_PENDING_ACTION_KEY] = action
-        await query.edit_message_text(
-            services.formatting_service.format_preferences(current),
-            reply_markup=services.formatting_service.build_preferences_keyboard(bool(current)),
-        )
         await query.message.reply_text(
             services.formatting_service.format_preferences_prompt(action, current)
         )
