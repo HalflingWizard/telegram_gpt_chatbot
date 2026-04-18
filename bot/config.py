@@ -48,7 +48,7 @@ def load_settings() -> Settings:
         telegram_file_size_limit_bytes=int(
             float(os.getenv("TELEGRAM_FILE_SIZE_LIMIT_MB", "20")) * 1024 * 1024
         ),
-        default_sticker_file_id=os.getenv("DEFAULT_STICKER_FILE_ID", DEFAULT_WELCOME_STICKER),
+        default_sticker_file_id=_optional_env("DEFAULT_STICKER_FILE_ID", DEFAULT_WELCOME_STICKER),
     )
 
 
@@ -71,3 +71,12 @@ def _parse_allowed_ids(value: str) -> set[int]:
     if not parsed_ids:
         raise ValueError("ALLOWED_TELEGRAM_USER_IDS must contain at least one numeric ID.")
     return parsed_ids
+
+
+def _optional_env(name: str, default: str | None = None) -> str | None:
+    """Return an optional environment variable, using the default for empty values."""
+    value = os.getenv(name)
+    if value is None:
+        return default
+    normalized = value.strip()
+    return normalized or default

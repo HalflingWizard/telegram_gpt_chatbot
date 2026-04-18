@@ -17,7 +17,7 @@ Implemented in this repository:
 - `/listchats` shows recent chats with title, chat ID, and updated time, plus inline buttons
 - `/currentchat` shows the active chat
 - `/deletechat <id>` soft deletes a chat
-- `/preferences <text>` stores per-user reply preferences
+- `/preferences` opens a menu to view, add, edit, or delete per-user reply preferences
 - Text messages routed to the active chat
 - Image uploads with optional caption
 - File uploads with optional caption

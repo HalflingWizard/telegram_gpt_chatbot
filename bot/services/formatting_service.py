@@ -21,7 +21,7 @@ class FormattingService:
             "/listchats\nShow your recent chats\n\n"
             "/currentchat\nShow the active chat\n\n"
             "/deletechat <id>\nDelete a chat\n\n"
-            "/preferences <text>\nSave reply preferences for future chats"
+            "/preferences\nOpen your preferences menu"
         )
 
     def format_start_text(self) -> str:
@@ -53,8 +53,8 @@ class FormattingService:
     def format_preferences(self, preferences: str | None) -> str:
         """Return the saved preference summary."""
         if not preferences:
-            return "⚙️ No preferences saved yet. Use /preferences <text> to add them."
-        return f"⚙️ Saved preferences:\n{preferences}"
+            return "⚙️ Preferences\n\nNo preferences saved yet."
+        return f"⚙️ Preferences\n\n{preferences}"
 
     def format_preferences_updated(self, preferences: str) -> str:
         """Return the preference update confirmation."""
@@ -63,6 +63,24 @@ class FormattingService:
     def format_preferences_cleared(self) -> str:
         """Return the preference clear confirmation."""
         return "🧹 Preferences cleared."
+
+    def build_preferences_keyboard(self, has_preferences: bool) -> InlineKeyboardMarkup:
+        """Return the preference-management keyboard."""
+        rows = [[InlineKeyboardButton("➕ Add Preference", callback_data="prefs:add")]]
+        if has_preferences:
+            rows.append([InlineKeyboardButton("✏️ Edit Preferences", callback_data="prefs:edit")])
+            rows.append([InlineKeyboardButton("🗑️ Delete Preferences", callback_data="prefs:delete")])
+        rows.append([InlineKeyboardButton("❌ Close", callback_data="prefs:close")])
+        return InlineKeyboardMarkup(rows)
+
+    def format_preferences_prompt(self, mode: str, current: str | None) -> str:
+        """Return the prompt for collecting preference text."""
+        if mode == "edit" and current:
+            return (
+                "✏️ Send your updated preferences in one message.\n\n"
+                f"Current preferences:\n{current}"
+            )
+        return "➕ Send your preferences in one message."
 
     def build_chat_list_keyboard(self, chats: list[Chat]) -> InlineKeyboardMarkup:
         """Return an inline keyboard for the chat list."""

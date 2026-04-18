@@ -26,6 +26,7 @@ from bot.handlers.chat_commands import (
     listchats_callback,
     listchats_command,
     newchat_command,
+    preferences_callback,
     preferences_command,
 )
 from bot.handlers.errors import error_handler
@@ -162,6 +163,7 @@ def build_application(settings: Settings | None = None) -> Application:
     application.add_handler(CommandHandler("preferences", preferences_command))
     application.add_handler(CallbackQueryHandler(listchats_callback, pattern=r"^chat:"))
     application.add_handler(CallbackQueryHandler(history_callback, pattern=r"^history:"))
+    application.add_handler(CallbackQueryHandler(preferences_callback, pattern=r"^prefs:"))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo_message))
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document_message))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))

@@ -12,6 +12,7 @@ from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
 
+from bot.handlers.chat_commands import PREFERENCES_PENDING_ACTION_KEY
 from bot.service_locator import get_service_container
 
 
@@ -23,6 +24,16 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     services = get_service_container(context)
     if not await services.authorize_update(update):
         return
+    pending_preferences_action = context.user_data.get(PREFERENCES_PENDING_ACTION_KEY)
+    if pending_preferences_action:
+        user_text = update.effective_message.text or ""
+        stored = services.auth_service.set_preferences(update.effective_user.id, user_text)
+        context.user_data.pop(PREFERENCES_PENDING_ACTION_KEY, None)
+        await update.effective_message.reply_text(
+            services.formatting_service.format_preferences_updated(stored or user_text)
+        )
+        return
+
     active_chat = services.chat_service.get_active_chat(update.effective_user.id)
     if active_chat is None:
         await update.effective_message.reply_text("⚠️ No active chat. Use /newchat or /chat <id>.")

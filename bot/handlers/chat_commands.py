@@ -1,4 +1,4 @@
-"""Chat command handlers for create, switch, list, inspect, and delete flows."""
+"""Chat command handlers for create, switch, list, inspect, delete, and preference flows."""
 
 from __future__ import annotations
 
@@ -11,6 +11,9 @@ from telegram.ext import ContextTypes
 
 from bot.service_locator import get_service_container
 from bot.utils.validators import normalize_chat_public_id, validate_chat_public_id
+
+
+PREFERENCES_PENDING_ACTION_KEY = "pending_preferences_action"
 
 
 async def newchat_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -124,26 +127,29 @@ async def deletechat_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def preferences_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Show, set, or clear saved user preferences."""
+    """Open the preferences menu, or save shortcut text when provided."""
     services = get_service_container(context)
     if not await services.authorize_update(update):
         return
+    current = services.auth_service.get_preferences(update.effective_user.id)
     if not context.args:
-        current = services.auth_service.get_preferences(update.effective_user.id)
         await update.effective_message.reply_text(
-            services.formatting_service.format_preferences(current)
+            services.formatting_service.format_preferences(current),
+            reply_markup=services.formatting_service.build_preferences_keyboard(bool(current)),
         )
         return
 
     raw_preferences = " ".join(context.args).strip()
     if raw_preferences.lower() in {"clear", "none", "reset"}:
         services.auth_service.set_preferences(update.effective_user.id, None)
+        context.user_data.pop(PREFERENCES_PENDING_ACTION_KEY, None)
         await update.effective_message.reply_text(
             services.formatting_service.format_preferences_cleared()
         )
         return
 
     stored = services.auth_service.set_preferences(update.effective_user.id, raw_preferences)
+    context.user_data.pop(PREFERENCES_PENDING_ACTION_KEY, None)
     await update.effective_message.reply_text(
         services.formatting_service.format_preferences_updated(stored or raw_preferences)
     )
@@ -194,3 +200,40 @@ async def history_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await query.edit_message_text(f"📜 Previous messages from chat {public_id}:")
     for chunk in services.formatting_service.format_chat_history(history):
         await query.message.reply_text(chunk)
+
+
+async def preferences_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle inline preference menu actions."""
+    services = get_service_container(context)
+    if not await services.authorize_update(update):
+        return
+    query: CallbackQuery = update.callback_query
+    await query.answer()
+
+    _, action = query.data.split(":", 1)
+    current = services.auth_service.get_preferences(update.effective_user.id)
+
+    if action == "close":
+        context.user_data.pop(PREFERENCES_PENDING_ACTION_KEY, None)
+        await query.edit_message_text("👌 Preferences menu closed.")
+        return
+
+    if action == "delete":
+        services.auth_service.set_preferences(update.effective_user.id, None)
+        context.user_data.pop(PREFERENCES_PENDING_ACTION_KEY, None)
+        await query.edit_message_text(
+            services.formatting_service.format_preferences(None),
+            reply_markup=services.formatting_service.build_preferences_keyboard(False),
+        )
+        await query.message.reply_text(services.formatting_service.format_preferences_cleared())
+        return
+
+    if action in {"add", "edit"}:
+        context.user_data[PREFERENCES_PENDING_ACTION_KEY] = action
+        await query.edit_message_text(
+            services.formatting_service.format_preferences(current),
+            reply_markup=services.formatting_service.build_preferences_keyboard(bool(current)),
+        )
+        await query.message.reply_text(
+            services.formatting_service.format_preferences_prompt(action, current)
+        )
