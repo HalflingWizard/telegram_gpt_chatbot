@@ -21,6 +21,8 @@ from bot.db.session import create_session_factory
 from bot.handlers.chat_commands import (
     chat_command,
     currentchat_command,
+    deleteall_callback,
+    deleteall_command,
     deletechat_command,
     history_callback,
     listchats_callback,
@@ -160,9 +162,11 @@ def build_application(settings: Settings | None = None) -> Application:
     application.add_handler(CommandHandler("listchats", listchats_command))
     application.add_handler(CommandHandler("currentchat", currentchat_command))
     application.add_handler(CommandHandler("deletechat", deletechat_command))
+    application.add_handler(CommandHandler("deleteall", deleteall_command))
     application.add_handler(CommandHandler("preferences", preferences_command))
     application.add_handler(CallbackQueryHandler(listchats_callback, pattern=r"^chat:"))
     application.add_handler(CallbackQueryHandler(history_callback, pattern=r"^history:"))
+    application.add_handler(CallbackQueryHandler(deleteall_callback, pattern=r"^deleteall:"))
     application.add_handler(CallbackQueryHandler(preferences_callback, pattern=r"^prefs:"))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo_message))
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document_message))

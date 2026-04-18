@@ -21,6 +21,7 @@ class FormattingService:
             "/listchats\nShow your recent chats\n\n"
             "/currentchat\nShow the active chat\n\n"
             "/deletechat <id>\nDelete a chat\n\n"
+            "/deleteall\nDelete all your chats and preferences\n\n"
             "/preferences\nOpen your preferences menu"
         )
 
@@ -49,6 +50,28 @@ class FormattingService:
     def format_chat_deleted(self, chat: Chat) -> str:
         """Return the chat deletion confirmation message."""
         return f"🗑️ Deleted chat {chat.chat_public_id}."
+
+    def format_delete_all_prompt(self) -> str:
+        """Return the confirmation message for deleting all user data."""
+        return (
+            "⚠️ This will permanently delete all your chats, messages, and preferences.\n\n"
+            "Are you sure you want to delete everything?"
+        )
+
+    def format_delete_all_done(self) -> str:
+        """Return the full-delete confirmation message."""
+        return "🧨 All your saved chats, messages, and preferences have been deleted."
+
+    def build_delete_all_keyboard(self) -> InlineKeyboardMarkup:
+        """Return the confirmation keyboard for full account data deletion."""
+        return InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton("🗑️ Yes, delete all", callback_data="deleteall:confirm"),
+                    InlineKeyboardButton("❌ Cancel", callback_data="deleteall:cancel"),
+                ]
+            ]
+        )
 
     def format_preferences(self, preferences: str | None) -> str:
         """Return the saved preference summary."""

@@ -45,3 +45,8 @@ class AuthService:
         with session_scope(self.session_factory) as session:
             user = UserRepository(session).set_preferences(telegram_user_id, normalized)
             return user.preferences if user else None
+
+    def delete_all_user_data(self, telegram_user_id: int) -> bool:
+        """Delete a user and all locally stored data."""
+        with session_scope(self.session_factory) as session:
+            return UserRepository(session).delete_user_and_related_data(telegram_user_id)

@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock
 from bot.handlers.chat_commands import (
     PREFERENCES_PENDING_ACTION_KEY,
     currentchat_command,
+    deleteall_callback,
+    deleteall_command,
     preferences_callback,
     preferences_command,
 )
@@ -35,6 +37,18 @@ class FakeFormattingService:
         """Return a fake prompt."""
         return f"prompt:{mode}:{current}"
 
+    def format_delete_all_prompt(self) -> str:
+        """Return a fake delete-all prompt."""
+        return "delete-all-prompt"
+
+    def build_delete_all_keyboard(self) -> str:
+        """Return a fake delete-all keyboard."""
+        return "delete-all-keyboard"
+
+    def format_delete_all_done(self) -> str:
+        """Return a fake delete-all confirmation."""
+        return "delete-all-done"
+
 
 class FakeServices:
     """Minimal service container for handler tests."""
@@ -45,6 +59,7 @@ class FakeServices:
         self.auth_service = SimpleNamespace(
             get_preferences=lambda user_id: None,
             set_preferences=lambda user_id, preferences: preferences,
+            delete_all_user_data=lambda user_id: True,
         )
         self.formatting_service = FakeFormattingService()
         self.authorize_update = AsyncMock(return_value=True)
@@ -160,3 +175,37 @@ async def test_text_handler_saves_pending_preferences_before_chatting() -> None:
     update.effective_message.reply_text.assert_awaited_once_with(
         "✅ Preferences saved.\n\nhello"
     )
+
+
+async def test_deleteall_command_opens_confirmation() -> None:
+    """The deleteall command should ask for confirmation."""
+    services = FakeServices()
+    update = make_update()
+    context = make_context(services)
+
+    await deleteall_command(update, context)
+
+    update.effective_message.reply_text.assert_awaited_once_with(
+        "delete-all-prompt",
+        reply_markup="delete-all-keyboard",
+    )
+
+
+async def test_deleteall_callback_confirms_and_clears_state() -> None:
+    """Confirmed delete-all should wipe data and clear local state."""
+    services = FakeServices()
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=123, username="alice"),
+        callback_query=SimpleNamespace(
+            data="deleteall:confirm",
+            answer=AsyncMock(),
+            edit_message_text=AsyncMock(),
+        ),
+    )
+    context = make_context(services)
+    context.user_data[PREFERENCES_PENDING_ACTION_KEY] = "add"
+
+    await deleteall_callback(update, context)
+
+    assert context.user_data == {}
+    update.callback_query.edit_message_text.assert_awaited_once_with("delete-all-done")

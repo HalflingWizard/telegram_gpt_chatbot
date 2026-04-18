@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, joinedload
 
 from bot.db.models import Chat, ChatState, Message, MessageAttachment, User
@@ -56,6 +56,31 @@ class UserRepository:
         user.preferences = preferences
         user.updated_at = datetime.now(timezone.utc)
         return user
+
+    def delete_user_and_related_data(self, telegram_user_id: int) -> bool:
+        """Delete a user and all related chats, messages, attachments, and state."""
+        user = self.get_by_telegram_user_id(telegram_user_id)
+        if user is None:
+            return False
+
+        chat_ids = list(
+            self.session.scalars(select(Chat.id).where(Chat.user_id == user.id))
+        )
+        if chat_ids:
+            message_ids = list(
+                self.session.scalars(select(Message.id).where(Message.chat_id.in_(chat_ids)))
+            )
+            if message_ids:
+                self.session.execute(
+                    delete(MessageAttachment).where(MessageAttachment.message_id.in_(message_ids))
+                )
+                self.session.execute(delete(Message).where(Message.id.in_(message_ids)))
+            self.session.execute(delete(ChatState).where(ChatState.chat_id.in_(chat_ids)))
+            self.session.execute(delete(Chat).where(Chat.id.in_(chat_ids)))
+
+        self.session.delete(user)
+        self.session.flush()
+        return True
 
 
 class ChatRepository:

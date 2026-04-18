@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-# Accepts: /newchat, /chat, /listchats, /currentchat, /deletechat, /preferences, and callback updates.
+# Accepts: /newchat, /chat, /listchats, /currentchat, /deletechat, /deleteall, /preferences, and callback updates.
 # Calls: AuthService, ChatService, FormattingService, preference storage, and validator helpers.
 # Produces: User-visible chat management messages and inline keyboard browsing.
 
@@ -126,6 +126,17 @@ async def deletechat_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.effective_message.reply_text(services.formatting_service.format_chat_deleted(chat))
 
 
+async def deleteall_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Ask the user to confirm deletion of all saved data."""
+    services = get_service_container(context)
+    if not await services.authorize_update(update):
+        return
+    await update.effective_message.reply_text(
+        services.formatting_service.format_delete_all_prompt(),
+        reply_markup=services.formatting_service.build_delete_all_keyboard(),
+    )
+
+
 async def preferences_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Open the preferences menu, or save shortcut text when provided."""
     services = get_service_container(context)
@@ -233,3 +244,24 @@ async def preferences_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.message.reply_text(
             services.formatting_service.format_preferences_prompt(action, current)
         )
+
+
+async def deleteall_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle confirmation callbacks for full user data deletion."""
+    services = get_service_container(context)
+    if not await services.authorize_update(update):
+        return
+    query: CallbackQuery = update.callback_query
+    await query.answer()
+
+    _, action = query.data.split(":", 1)
+    if action == "cancel":
+        await query.edit_message_text("👌 Full delete canceled.")
+        return
+
+    deleted = services.auth_service.delete_all_user_data(update.effective_user.id)
+    context.user_data.clear()
+    if deleted:
+        await query.edit_message_text(services.formatting_service.format_delete_all_done())
+        return
+    await query.edit_message_text("📭 There was no saved data to delete.")
