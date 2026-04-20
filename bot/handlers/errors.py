@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 
 from telegram import Update
+from telegram.error import NetworkError, TimedOut
 from telegram.ext import ContextTypes
 
 
@@ -17,6 +18,13 @@ LOGGER = logging.getLogger(__name__)
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Log unexpected handler failures and notify the user when possible."""
+    if isinstance(context.error, (NetworkError, TimedOut)):
+        LOGGER.warning(
+            "Telegram network error during polling or request; the library should retry automatically",
+            exc_info=context.error,
+        )
+        return
+
     LOGGER.exception("Unhandled Telegram handler error", exc_info=context.error)
     if isinstance(update, Update) and update.effective_message:
         await update.effective_message.reply_text(
