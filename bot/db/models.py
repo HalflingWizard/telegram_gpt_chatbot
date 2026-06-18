@@ -33,6 +33,26 @@ class User(Base):
     )
 
     chats: Mapped[list["Chat"]] = relationship(back_populates="user")
+    personas: Mapped[list["Persona"]] = relationship(back_populates="user")
+
+
+class Persona(Base):
+    """A user-defined assistant profile with custom instructions."""
+
+    __tablename__ = "personas"
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_user_persona_name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    system_prompt: Mapped[str] = mapped_column(Text)
+    is_builtin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    user: Mapped[User] = relationship(back_populates="personas")
 
 
 class Chat(Base):

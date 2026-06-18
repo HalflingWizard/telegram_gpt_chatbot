@@ -5,7 +5,7 @@ from __future__ import annotations
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.db.models import Chat
-from bot.services.chat_service import TranscriptMessage
+from bot.services.chat_service import PersonaSummary, TranscriptMessage
 from bot.services.token_usage import ContextWindowWarning
 from bot.utils.time import format_chat_timestamp
 
@@ -24,6 +24,7 @@ class FormattingService:
             "/deletechat <id>\nDelete a chat\n\n"
             "/deleteall\nDelete all your chats and preferences\n\n"
             "/preferences\nOpen your preferences menu\n\n"
+            "/personas\nList and manage assistant personas\n\n"
             "How this bot works\n"
             "- I keep separate saved chats. Use /newchat when you start a new topic.\n"
             "- I can read text, images, and files you send here.\n"
@@ -61,12 +62,85 @@ class FormattingService:
             "You may want to continue in a new chat soon."
         )
 
-    def format_current_chat(self, chat: Chat | None) -> str:
+    def format_current_chat(self, chat: Chat | None, active_persona: PersonaSummary | None = None) -> str:
         """Return a readable current-chat summary."""
         if chat is None:
             return "⚠️ No active chat. Use /newchat or /chat <id>."
         updated = format_chat_timestamp(chat.last_message_at or chat.updated_at)
-        return f"🧵 Active chat: {chat.chat_public_id}\n📝 Title: {chat.title}\n🕒 Last updated: {updated}"
+        persona_name = active_persona.name if active_persona else "General assistant"
+        return (
+            f"🧵 Active chat, {chat.chat_public_id}\n"
+            f"📝 Title, {chat.title}\n"
+            f"🤖 Persona, {persona_name}\n"
+            f"🕒 Last updated, {updated}"
+        )
+
+    def format_persona_list(
+        self,
+        personas: list[PersonaSummary],
+        active_persona: PersonaSummary | None,
+    ) -> str:
+        """Return a readable persona list and command help."""
+        active_name = active_persona.name if active_persona else "General assistant"
+        lines = [
+            "🤖 Personas",
+            "",
+            f"Active now, {active_name}",
+            "",
+            "Saved personas",
+        ]
+        for persona in personas:
+            marker = "built in" if persona.is_builtin else "custom"
+            lines.append(f"- {persona.name}, {marker}")
+        lines.extend(
+            [
+                "",
+                "Commands",
+                "/personas add",
+                "Then send one message like Name | prompt",
+                "",
+                "/personas use <name>",
+                "Use a persona in the active chat",
+                "",
+                "/personas general",
+                "Return this chat to the general assistant",
+                "",
+                "/personas delete <name>",
+                "Delete a custom persona",
+            ]
+        )
+        return "\n".join(lines)
+
+    def format_persona_prompt_request(self) -> str:
+        """Return instructions for creating a persona."""
+        return (
+            "Send one message with the persona name and prompt.\n\n"
+            "Format\n"
+            "Name | prompt\n\n"
+            "Example\n"
+            "Study Coach | You explain concepts step by step and ask me short quiz questions."
+        )
+
+    def format_persona_saved(self, persona: PersonaSummary) -> str:
+        """Return persona save confirmation."""
+        return f"✅ Persona saved, {persona.name}."
+
+    def format_persona_selected(self, persona: PersonaSummary) -> str:
+        """Return persona selection confirmation."""
+        return f"🤖 This chat is now using {persona.name}."
+
+    def format_persona_cleared(self) -> str:
+        """Return general assistant confirmation."""
+        return "🤖 This chat is now using the general assistant."
+
+    def format_persona_deleted(self, persona: PersonaSummary) -> str:
+        """Return persona deletion confirmation."""
+        return f"🗑️ Deleted persona, {persona.name}."
+
+    def format_assistant_reply(self, text: str, active_persona: PersonaSummary | None) -> str:
+        """Return an assistant reply with a visible persona label."""
+        label = active_persona.name if active_persona else "General assistant"
+        return f"🤖 {label}\n\n{text}"
 
     def format_chat_created(self, chat: Chat) -> str:
         """Return the new chat confirmation message."""

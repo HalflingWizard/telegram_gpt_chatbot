@@ -28,6 +28,7 @@ from bot.handlers.chat_commands import (
     listchats_callback,
     listchats_command,
     newchat_command,
+    personas_command,
     preferences_callback,
     preferences_command,
 )
@@ -164,6 +165,8 @@ def build_application(settings: Settings | None = None) -> Application:
     application.add_handler(CommandHandler("deletechat", deletechat_command))
     application.add_handler(CommandHandler("deleteall", deleteall_command))
     application.add_handler(CommandHandler("preferences", preferences_command))
+    application.add_handler(CommandHandler("personas", personas_command))
+    application.add_handler(CommandHandler("persona", personas_command))
     application.add_handler(CallbackQueryHandler(listchats_callback, pattern=r"^chat:"))
     application.add_handler(CallbackQueryHandler(history_callback, pattern=r"^history:"))
     application.add_handler(CallbackQueryHandler(deleteall_callback, pattern=r"^deleteall:"))

@@ -78,6 +78,8 @@ class OpenAIService:
         attachments: list[OpenAIInputAttachment] | None,
         previous_response_id: str | None,
         user_preferences: str | None = None,
+        persona_name: str | None = None,
+        persona_prompt: str | None = None,
     ) -> AssistantReply:
         """Create an assistant response for the current user turn."""
         content: list[dict[str, Any]] = []
@@ -103,6 +105,14 @@ class OpenAIService:
             content.append({"type": "input_text", "text": "Continue."})
 
         instructions = DEVELOPER_INSTRUCTIONS
+        if persona_prompt:
+            instructions = (
+                f"{instructions}\n\n"
+                f"Active persona name\n{persona_name or 'Custom persona'}\n\n"
+                "Custom persona instructions\n"
+                f"{persona_prompt}\n\n"
+                "Follow the custom persona instructions unless they conflict with safety or higher-level instructions."
+            )
         if user_preferences:
             instructions = (
                 f"{instructions}\n\nUser preferences:\n"

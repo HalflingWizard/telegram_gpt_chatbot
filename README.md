@@ -19,6 +19,7 @@ Implemented in this repository:
 - `/deletechat <id>` soft deletes a chat
 - `/deleteall` deletes all chats, messages, and preferences after confirmation
 - `/preferences` opens a menu to view, add, edit, or delete per-user reply preferences
+- `/personas` lists and manages custom assistant personas
 - Text messages routed to the active chat
 - Nearby split text messages handled in one OpenAI call
 - Image uploads with optional caption
@@ -221,10 +222,30 @@ What this bot can and cannot do
 - It can combine quick split messages into one OpenAI request
 - It can keep separate saved chats and resume them through `/chat <id>`
 - It can remember user preferences saved through `/preferences`
+- It can run a saved persona with custom instructions in a chat
 - It is not the official ChatGPT app
 - It does not have ChatGPT app memory, voice mode, web browsing, custom GPTs, or connectors
 - It cannot see Telegram messages outside this bot chat
 - It cannot open websites, use outside apps, control devices, or access email and calendars unless those tools are added later
+
+Personas
+
+A persona is a named custom assistant profile. Each persona has its own instruction prompt. When a chat uses a persona, every OpenAI call for that chat includes that persona prompt. Replies show the active persona name at the top, so the user can tell whether they are using the general assistant or a persona.
+
+The built-in persona is `Bot Guide`. It explains how to use this Telegram bot and answers common setup questions.
+
+Persona commands
+
+```bash
+/personas
+/personas add
+/personas add Study Coach | You explain concepts step by step and ask short quiz questions.
+/personas use Study Coach
+/personas general
+/personas delete Study Coach
+```
+
+Use `/persona` as a shorter alias for `/personas`.
 
 Important note about model names:
 

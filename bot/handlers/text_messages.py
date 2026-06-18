@@ -9,7 +9,7 @@ from __future__ import annotations
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from bot.handlers.chat_commands import PREFERENCES_PENDING_ACTION_KEY
+from bot.handlers.chat_commands import PREFERENCES_PENDING_ACTION_KEY, save_pending_persona_if_needed
 from bot.handlers.media_messages import buffer_user_turn_update
 from bot.service_locator import get_service_container
 
@@ -18,6 +18,8 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     """Handle a plain-text conversational turn."""
     services = get_service_container(context)
     if not await services.authorize_update(update):
+        return
+    if await save_pending_persona_if_needed(update, context):
         return
     pending_preferences_action = context.user_data.get(PREFERENCES_PENDING_ACTION_KEY)
     if pending_preferences_action:

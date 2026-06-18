@@ -8,8 +8,43 @@ from datetime import datetime, timezone
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, joinedload
 
-from bot.db.models import Chat, ChatState, Message, MessageAttachment, User
+from bot.db.models import Chat, ChatState, Message, MessageAttachment, Persona, User
 from bot.services.token_usage import ContextWindowWarning
+
+
+BUILTIN_GUIDE_PERSONA_NAME = "Bot Guide"
+BUILTIN_GUIDE_PERSONA_PROMPT = """
+You are Bot Guide, a help persona for this private Telegram GPT bot.
+
+Your job is to explain how to use this bot in plain language.
+
+Explain these features when relevant.
+- Use /newchat to start a new saved chat.
+- Use /chat <id> to reopen a saved chat.
+- Use /listchats to see saved chats.
+- Use /currentchat to see the active chat.
+- Use /preferences to save reply preferences.
+- Use /personas to manage personas.
+- A persona is a named custom assistant style with its own instructions.
+- Use /personas add to create a persona.
+- Use /personas use <name> to use a persona in the active chat.
+- Use /personas general to return the active chat to the general assistant.
+- Use /personas delete <name> to delete a persona.
+- Text messages sent close together are grouped into one model call.
+- Photos and files sent close together are grouped into one model call.
+- The bot warns when a chat gets close to the model context window.
+
+Explain these limits when relevant.
+- This is not the official ChatGPT app.
+- It does not have ChatGPT app memory.
+- It does not have voice mode.
+- It does not browse the web.
+- It does not have custom GPTs or connectors.
+- It cannot see Telegram messages outside this bot.
+- It cannot access email, calendars, local files, websites, or outside apps unless the code is changed later.
+
+If the user asks for something the bot cannot do, apologize briefly and suggest what they can paste or upload here.
+""".strip()
 
 
 class UserRepository:
@@ -79,10 +114,87 @@ class UserRepository:
                 self.session.execute(delete(Message).where(Message.id.in_(message_ids)))
             self.session.execute(delete(ChatState).where(ChatState.chat_id.in_(chat_ids)))
             self.session.execute(delete(Chat).where(Chat.id.in_(chat_ids)))
+        self.session.execute(delete(Persona).where(Persona.user_id == user.id))
 
         self.session.delete(user)
         self.session.flush()
         return True
+
+
+class PersonaRepository:
+    """CRUD operations for user personas."""
+
+    def __init__(self, session: Session) -> None:
+        """Initialize the repository."""
+        self.session = session
+
+    def ensure_builtin_personas(self, user_id: int) -> None:
+        """Create built-in personas for a user when missing."""
+        existing = self.get_by_name(user_id, BUILTIN_GUIDE_PERSONA_NAME)
+        if existing is not None:
+            return
+        persona = Persona(
+            user_id=user_id,
+            name=BUILTIN_GUIDE_PERSONA_NAME,
+            system_prompt=BUILTIN_GUIDE_PERSONA_PROMPT,
+            is_builtin=True,
+        )
+        self.session.add(persona)
+        self.session.flush()
+
+    def list_for_user(self, user_id: int) -> list[Persona]:
+        """List personas for a user."""
+        result = self.session.scalars(
+            select(Persona)
+            .where(Persona.user_id == user_id)
+            .order_by(Persona.is_builtin.desc(), Persona.name.asc())
+        )
+        return list(result)
+
+    def get_by_name(self, user_id: int, name: str) -> Persona | None:
+        """Fetch a persona by exact name."""
+        return self.session.scalar(
+            select(Persona).where(Persona.user_id == user_id, Persona.name == name)
+        )
+
+    def get_by_id(self, user_id: int, persona_id: int) -> Persona | None:
+        """Fetch a persona by ID."""
+        return self.session.scalar(
+            select(Persona).where(Persona.user_id == user_id, Persona.id == persona_id)
+        )
+
+    def create_or_update(
+        self,
+        user_id: int,
+        name: str,
+        system_prompt: str,
+        is_builtin: bool = False,
+    ) -> Persona:
+        """Create or update a persona by name."""
+        existing = self.get_by_name(user_id, name)
+        if existing is not None:
+            existing.system_prompt = system_prompt
+            existing.is_builtin = is_builtin
+            existing.updated_at = datetime.now(timezone.utc)
+            return existing
+        persona = Persona(
+            user_id=user_id,
+            name=name,
+            system_prompt=system_prompt,
+            is_builtin=is_builtin,
+        )
+        self.session.add(persona)
+        self.session.flush()
+        return persona
+
+    def delete_by_name(self, user_id: int, name: str) -> Persona | None:
+        """Delete a non-built-in persona by name."""
+        persona = self.get_by_name(user_id, name)
+        if persona is None or persona.is_builtin:
+            return None
+        self.session.delete(persona)
+        self.session.flush()
+        return persona
 
 
 class ChatRepository:
@@ -195,6 +307,27 @@ class ChatRepository:
         if state is None:
             return
         state.last_openai_response_id = response_id
+
+    def set_active_persona_id(self, chat_id: int, persona_id: int | None) -> None:
+        """Persist the selected persona for a chat."""
+        state = self.session.scalar(select(ChatState).where(ChatState.chat_id == chat_id))
+        if state is None:
+            return
+        notes = self._load_state_notes(state.notes)
+        if persona_id is None:
+            notes.pop("active_persona_id", None)
+        else:
+            notes["active_persona_id"] = persona_id
+        state.notes = json.dumps(notes, sort_keys=True)
+
+    def get_active_persona_id(self, chat_id: int) -> int | None:
+        """Return the selected persona ID for a chat."""
+        state = self.session.scalar(select(ChatState).where(ChatState.chat_id == chat_id))
+        if state is None:
+            return None
+        notes = self._load_state_notes(state.notes)
+        persona_id = notes.get("active_persona_id")
+        return int(persona_id) if persona_id is not None else None
 
     def record_token_usage(
         self,

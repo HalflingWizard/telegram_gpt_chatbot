@@ -69,3 +69,34 @@ def test_record_token_usage_persists_warning_state() -> None:
         context_window_tokens=100,
     )
     assert repeated is None
+
+
+def test_persona_creation_and_selection() -> None:
+    """Users should be able to create and select personas."""
+    session_factory = create_session_factory("sqlite:///:memory:")
+    AuthService(session_factory, {123}).is_allowed(123, "alice")
+    chat_service = ChatService(session_factory)
+    chat = chat_service.create_new_chat(123)
+
+    personas = chat_service.list_personas(123)
+    assert [persona.name for persona in personas] == ["Bot Guide"]
+
+    created = chat_service.create_persona(
+        telegram_user_id=123,
+        name="Study Coach",
+        system_prompt="Explain step by step.",
+    )
+    assert created.name == "Study Coach"
+
+    selected = chat_service.set_active_persona(
+        telegram_user_id=123,
+        chat_id=chat.id,
+        name="Study Coach",
+    )
+    active = chat_service.get_active_persona_for_chat(chat.id)
+
+    assert selected.name == "Study Coach"
+    assert active.system_prompt == "Explain step by step."
+
+    chat_service.clear_active_persona(chat.id)
+    assert chat_service.get_active_persona_for_chat(chat.id) is None

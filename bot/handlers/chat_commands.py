@@ -14,6 +14,7 @@ from bot.utils.validators import normalize_chat_public_id, validate_chat_public_
 
 
 PREFERENCES_PENDING_ACTION_KEY = "pending_preferences_action"
+PERSONA_PENDING_ACTION_KEY = "pending_persona_action"
 
 
 async def newchat_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -41,7 +42,10 @@ async def currentchat_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not await services.authorize_update(update):
         return
     chat = services.chat_service.get_active_chat(update.effective_user.id)
-    await update.effective_message.reply_text(services.formatting_service.format_current_chat(chat))
+    active_persona = services.chat_service.get_active_persona_for_chat(chat.id) if chat else None
+    await update.effective_message.reply_text(
+        services.formatting_service.format_current_chat(chat, active_persona)
+    )
 
 
 async def chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -164,6 +168,106 @@ async def preferences_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.effective_message.reply_text(
         services.formatting_service.format_preferences_updated(stored or raw_preferences)
     )
+
+
+async def personas_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """List and manage assistant personas."""
+    services = get_service_container(context)
+    if not await services.authorize_update(update):
+        return
+    active_chat = services.chat_service.get_active_chat(update.effective_user.id)
+    if active_chat is None:
+        await update.effective_message.reply_text("⚠️ No active chat. Use /newchat first.")
+        return
+
+    args = context.args or []
+    if not args:
+        personas = services.chat_service.list_personas(update.effective_user.id)
+        active_persona = services.chat_service.get_active_persona_for_chat(active_chat.id)
+        await update.effective_message.reply_text(
+            services.formatting_service.format_persona_list(personas, active_persona)
+        )
+        return
+
+    action = args[0].lower()
+    if action == "add":
+        raw_value = " ".join(args[1:]).strip()
+        if not raw_value:
+            context.user_data[PERSONA_PENDING_ACTION_KEY] = "add"
+            await update.effective_message.reply_text(
+                services.formatting_service.format_persona_prompt_request()
+            )
+            return
+        await _save_persona_from_text(update, services, raw_value)
+        return
+
+    if action == "use":
+        name = " ".join(args[1:]).strip()
+        if not name:
+            await update.effective_message.reply_text("Usage, /personas use <name>")
+            return
+        persona = services.chat_service.set_active_persona(
+            telegram_user_id=update.effective_user.id,
+            chat_id=active_chat.id,
+            name=name,
+        )
+        if persona is None:
+            await update.effective_message.reply_text("Persona not found.")
+            return
+        await update.effective_message.reply_text(services.formatting_service.format_persona_selected(persona))
+        return
+
+    if action in {"general", "clear", "reset"}:
+        services.chat_service.clear_active_persona(active_chat.id)
+        await update.effective_message.reply_text(services.formatting_service.format_persona_cleared())
+        return
+
+    if action == "delete":
+        name = " ".join(args[1:]).strip()
+        if not name:
+            await update.effective_message.reply_text("Usage, /personas delete <name>")
+            return
+        persona = services.chat_service.delete_persona(update.effective_user.id, name)
+        if persona is None:
+            await update.effective_message.reply_text("Persona not found, or it is built in and cannot be deleted.")
+            return
+        await update.effective_message.reply_text(services.formatting_service.format_persona_deleted(persona))
+        return
+
+    await update.effective_message.reply_text("Unknown persona command. Use /personas to see options.")
+
+
+async def save_pending_persona_if_needed(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Save a pending persona prompt when the user is in persona setup mode."""
+    if context.user_data.get(PERSONA_PENDING_ACTION_KEY) != "add":
+        return False
+    services = get_service_container(context)
+    if not await services.authorize_update(update):
+        return True
+    raw_value = update.effective_message.text or ""
+    context.user_data.pop(PERSONA_PENDING_ACTION_KEY, None)
+    await _save_persona_from_text(update, services, raw_value)
+    return True
+
+
+async def _save_persona_from_text(update: Update, services, raw_value: str) -> None:
+    """Parse and save a persona from Name | prompt text."""
+    if "|" not in raw_value:
+        await update.effective_message.reply_text(
+            "I could not save that persona. Use this format, Name | prompt"
+        )
+        return
+    name, system_prompt = [part.strip() for part in raw_value.split("|", 1)]
+    if not name or not system_prompt:
+        await update.effective_message.reply_text(
+            "I could not save that persona. Both name and prompt are required."
+        )
+        return
+    persona = services.chat_service.create_persona(update.effective_user.id, name, system_prompt)
+    if persona is None:
+        await update.effective_message.reply_text("I could not save that persona.")
+        return
+    await update.effective_message.reply_text(services.formatting_service.format_persona_saved(persona))
 
 
 async def listchats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

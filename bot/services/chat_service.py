@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import sessionmaker
 
 from bot.db.models import Chat, Message
-from bot.db.repositories import ChatRepository, MessageRepository, UserRepository
+from bot.db.repositories import ChatRepository, MessageRepository, PersonaRepository, UserRepository
 from bot.db.session import session_scope
 from bot.services.token_usage import ContextWindowWarning
 from bot.utils.ids import generate_chat_public_id
@@ -38,6 +38,16 @@ class TranscriptMessage:
     attachment_types: list[str]
 
 
+@dataclass
+class PersonaSummary:
+    """Serializable persona data for handlers and prompts."""
+
+    id: int
+    name: str
+    system_prompt: str
+    is_builtin: bool
+
+
 class ChatService:
     """Encapsulate chat CRUD and message persistence."""
 
@@ -50,9 +60,11 @@ class ChatService:
         with session_scope(self.session_factory) as session:
             user_repo = UserRepository(session)
             chat_repo = ChatRepository(session)
+            persona_repo = PersonaRepository(session)
             user = user_repo.get_by_telegram_user_id(telegram_user_id)
             if user is None:
                 raise ValueError("User record does not exist.")
+            persona_repo.ensure_builtin_personas(user.id)
             chat_public_id = self._generate_unique_chat_id(chat_repo, user.id)
             return chat_repo.create_chat(user_id=user.id, chat_public_id=chat_public_id)
 
@@ -187,6 +199,78 @@ class ChatService:
         with session_scope(self.session_factory) as session:
             ChatRepository(session).update_title(chat_id=chat_id, title=title, title_status=title_status)
 
+    def list_personas(self, telegram_user_id: int) -> list[PersonaSummary]:
+        """List personas for a Telegram user."""
+        with session_scope(self.session_factory) as session:
+            user = UserRepository(session).get_by_telegram_user_id(telegram_user_id)
+            if user is None:
+                return []
+            repo = PersonaRepository(session)
+            repo.ensure_builtin_personas(user.id)
+            return [self._persona_summary(persona) for persona in repo.list_for_user(user.id)]
+
+    def create_persona(self, telegram_user_id: int, name: str, system_prompt: str) -> PersonaSummary | None:
+        """Create or update a persona for a Telegram user."""
+        with session_scope(self.session_factory) as session:
+            user = UserRepository(session).get_by_telegram_user_id(telegram_user_id)
+            if user is None:
+                return None
+            repo = PersonaRepository(session)
+            repo.ensure_builtin_personas(user.id)
+            persona = repo.create_or_update(
+                user_id=user.id,
+                name=name.strip(),
+                system_prompt=system_prompt.strip(),
+                is_builtin=False,
+            )
+            return self._persona_summary(persona)
+
+    def delete_persona(self, telegram_user_id: int, name: str) -> PersonaSummary | None:
+        """Delete a non-built-in persona."""
+        with session_scope(self.session_factory) as session:
+            user = UserRepository(session).get_by_telegram_user_id(telegram_user_id)
+            if user is None:
+                return None
+            persona = PersonaRepository(session).delete_by_name(user.id, name.strip())
+            return self._persona_summary(persona) if persona else None
+
+    def set_active_persona(
+        self,
+        telegram_user_id: int,
+        chat_id: int,
+        name: str,
+    ) -> PersonaSummary | None:
+        """Select a persona for a chat."""
+        with session_scope(self.session_factory) as session:
+            user = UserRepository(session).get_by_telegram_user_id(telegram_user_id)
+            if user is None:
+                return None
+            persona_repo = PersonaRepository(session)
+            persona_repo.ensure_builtin_personas(user.id)
+            persona = persona_repo.get_by_name(user.id, name.strip())
+            if persona is None:
+                return None
+            ChatRepository(session).set_active_persona_id(chat_id, persona.id)
+            return self._persona_summary(persona)
+
+    def clear_active_persona(self, chat_id: int) -> None:
+        """Return a chat to the general assistant."""
+        with session_scope(self.session_factory) as session:
+            ChatRepository(session).set_active_persona_id(chat_id, None)
+
+    def get_active_persona_for_chat(self, chat_id: int) -> PersonaSummary | None:
+        """Return the active persona for a chat."""
+        with session_scope(self.session_factory) as session:
+            chat_repo = ChatRepository(session)
+            persona_id = chat_repo.get_active_persona_id(chat_id)
+            if persona_id is None:
+                return None
+            chat = session.get(Chat, chat_id)
+            if chat is None:
+                return None
+            persona = PersonaRepository(session).get_by_id(chat.user_id, persona_id)
+            return self._persona_summary(persona) if persona else None
+
     def get_chat_history(self, telegram_user_id: int, chat_public_id: str) -> list[TranscriptMessage]:
         """Return a chat transcript suitable for Telegram display."""
         with session_scope(self.session_factory) as session:
@@ -218,3 +302,12 @@ class ChatService:
             if not chat_repo.public_id_exists(user_id, candidate):
                 return candidate
         raise RuntimeError("Could not generate a unique chat ID.")
+
+    def _persona_summary(self, persona) -> PersonaSummary:
+        """Return a detached persona summary."""
+        return PersonaSummary(
+            id=persona.id,
+            name=persona.name,
+            system_prompt=persona.system_prompt,
+            is_builtin=persona.is_builtin,
+        )

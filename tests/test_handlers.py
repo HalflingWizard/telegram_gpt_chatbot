@@ -20,7 +20,7 @@ from bot.handlers.text_messages import handle_text_message
 class FakeFormattingService:
     """Formatting stub for handler tests."""
 
-    def format_current_chat(self, chat) -> str:
+    def format_current_chat(self, chat, active_persona=None) -> str:
         """Return a fixed message."""
         return "⚠️ No active chat. Use /newchat or /chat <id>."
 
@@ -35,6 +35,11 @@ class FakeFormattingService:
     def format_context_window_warning(self, warning) -> str:
         """Return a fake context warning."""
         return f"context-warning:{warning.level}:{warning.percent_used}"
+
+    def format_assistant_reply(self, text, active_persona) -> str:
+        """Return a fake assistant reply."""
+        label = active_persona.name if active_persona else "General assistant"
+        return f"{label}\n{text}"
 
     def build_preferences_keyboard(self, has_preferences) -> str:
         """Return a fake keyboard marker."""
@@ -90,6 +95,7 @@ class FakeMediaServices:
             store_user_message=Mock(),
             store_assistant_message=Mock(),
             record_token_usage=Mock(return_value=None),
+            get_active_persona_for_chat=Mock(return_value=None),
             update_title=Mock(),
         )
         self.settings = SimpleNamespace(openai_context_window_tokens=100)
@@ -264,7 +270,7 @@ async def test_split_text_messages_use_one_openai_call(monkeypatch) -> None:
     stored_kwargs = services.chat_service.store_user_message.call_args.kwargs
     assert stored_kwargs["message_type"] == "text"
     assert stored_kwargs["text_content"] == "This is part one.\n\nThis is part two."
-    first_update.effective_message.reply_text.assert_awaited_once_with("answer")
+    first_update.effective_message.reply_text.assert_awaited_once_with("General assistant\nanswer")
 
 
 async def test_context_warning_is_sent_after_reply(monkeypatch) -> None:
@@ -291,7 +297,7 @@ async def test_context_warning_is_sent_after_reply(monkeypatch) -> None:
         total_tokens=96,
         context_window_tokens=100,
     )
-    assert update.effective_message.reply_text.await_args_list[0].args == ("answer",)
+    assert update.effective_message.reply_text.await_args_list[0].args == ("General assistant\nanswer",)
     assert update.effective_message.reply_text.await_args_list[1].args == ("context-warning:high:86",)
 
 
@@ -320,7 +326,7 @@ async def test_photo_media_group_uses_one_openai_call(monkeypatch) -> None:
     stored_kwargs = services.chat_service.store_user_message.call_args.kwargs
     assert stored_kwargs["message_type"] == "image"
     assert len(stored_kwargs["attachments"]) == 2
-    first_update.effective_message.reply_text.assert_awaited_once_with("answer")
+    first_update.effective_message.reply_text.assert_awaited_once_with("General assistant\nanswer")
 
 
 async def test_mixed_media_group_uses_one_openai_call(monkeypatch) -> None:

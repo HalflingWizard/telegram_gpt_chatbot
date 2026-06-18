@@ -55,6 +55,8 @@ async def test_file_input_uses_only_file_id_and_includes_preferences() -> None:
         ],
         previous_response_id="resp_prev",
         user_preferences="Reply briefly",
+        persona_name="Study Coach",
+        persona_prompt="Explain slowly.",
     )
 
     assert reply.text == "done"
@@ -63,5 +65,7 @@ async def test_file_input_uses_only_file_id_and_includes_preferences() -> None:
     assert reply.usage.total_tokens == 120
     payload = fake_responses.calls[0]
     assert "Reply briefly" in payload["instructions"]
+    assert "Study Coach" in payload["instructions"]
+    assert "Explain slowly." in payload["instructions"]
     file_item = payload["input"][0]["content"][1]
     assert file_item == {"type": "input_file", "file_id": "file_123"}

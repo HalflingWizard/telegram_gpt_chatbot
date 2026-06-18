@@ -234,6 +234,7 @@ async def _respond_to_user_turn(
     attachment_records: list[AttachmentRecord],
 ) -> None:
     """Send a buffered user turn to OpenAI and reply in Telegram."""
+    active_persona = services.chat_service.get_active_persona_for_chat(active_chat.id)
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     try:
         assistant_reply = await services.openai_service.create_response(
@@ -250,6 +251,8 @@ async def _respond_to_user_turn(
             ],
             previous_response_id=active_chat.state.last_openai_response_id,
             user_preferences=services.auth_service.get_preferences(update.effective_user.id),
+            persona_name=active_persona.name if active_persona else None,
+            persona_prompt=active_persona.system_prompt if active_persona else None,
         )
     except services.openai_timeout_error:
         services.log_event(
@@ -280,6 +283,7 @@ async def _respond_to_user_turn(
         return
 
     final_text = assistant_reply.text or "I could not produce a response."
+    visible_text = services.formatting_service.format_assistant_reply(final_text, active_persona)
     services.chat_service.store_assistant_message(
         chat_id=active_chat.id,
         text_content=final_text,
@@ -303,7 +307,7 @@ async def _respond_to_user_turn(
         chat_public_id=active_chat.chat_public_id,
         chat_db_id=active_chat.id,
     )
-    await update.effective_message.reply_text(final_text)
+    await update.effective_message.reply_text(visible_text)
     if context_warning:
         await update.effective_message.reply_text(
             services.formatting_service.format_context_window_warning(context_warning)
