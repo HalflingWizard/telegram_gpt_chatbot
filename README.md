@@ -20,8 +20,11 @@ Implemented in this repository:
 - `/deleteall` deletes all chats, messages, and preferences after confirmation
 - `/preferences` opens a menu to view, add, edit, or delete per-user reply preferences
 - Text messages routed to the active chat
+- Nearby split text messages handled in one OpenAI call
 - Image uploads with optional caption
 - File uploads with optional caption
+- Telegram media albums with multiple images or files handled in one OpenAI call
+- Token usage tracking with context-window warnings
 - OpenAI file uploads with `purpose="user_data"`
 - Local chat titles generated after the first user turn
 - Automatic sticker sent on `/start` and `/newchat`
@@ -30,9 +33,8 @@ Implemented in this repository:
 - Structured JSON logging
 - Unit tests for auth, chat service, title service, and handler behavior
 
-Deferred or partial:
+Deferred or partial
 
-- Telegram media albums are not fully aggregated in v1, but the media handler and attachment model are structured so album support can be added without rewriting the whole flow
 - Webhook deployment is documented as an extension path; the current runtime uses long polling
 - Database migrations are not added yet; v1 bootstraps SQLite schema with SQLAlchemy `create_all`
 
@@ -126,6 +128,12 @@ Start the bot:
 python main.py
 ```
 
+Update the local repo without recreating `.env` or the local SQLite database.
+
+```bash
+bash update.sh
+```
+
 Run tests:
 
 ```bash
@@ -142,6 +150,7 @@ pytest
 | `OPENAI_MAIN_MODEL` | Yes | Main assistant model name; defaults to `gpt-5.1` in `.env.example` |
 | `OPENAI_TITLE_MODEL` | Yes | Lower-cost model for title generation; defaults to `gpt-5-mini` |
 | `OPENAI_REASONING_EFFORT` | Yes | Reasoning budget for the main assistant; defaults to `medium` |
+| `OPENAI_CONTEXT_WINDOW_TOKENS` | Yes | Configured context window used for friendly warnings; defaults to `270000` |
 | `DATABASE_URL` | Yes | SQLAlchemy database URL; default is `sqlite:///data/telegram_gpt_bot.db` |
 | `LOG_LEVEL` | Yes | Logging level such as `INFO` or `DEBUG` |
 | `OPENAI_TIMEOUT_SECONDS` | No | Timeout for OpenAI requests |
@@ -195,6 +204,27 @@ Reasoning settings:
 
 - The main assistant uses `OPENAI_REASONING_EFFORT`, default `medium`
 - Title generation uses a smaller model to reduce cost and latency
+
+Context tracking
+
+- The OpenAI Responses API returns token usage after each completed response
+- This bot stores token usage totals in `chat_state.notes`
+- The bot compares the latest `input_tokens` value with `OPENAI_CONTEXT_WINDOW_TOKENS`
+- It warns the user at about 75 percent, 85 percent, and 95 percent of the configured context window
+- Warnings are friendly and suggest starting a new chat before earlier details become unreliable
+- The warning is an estimate based on API usage data, not a separate tokenizer pass
+
+What this bot can and cannot do
+
+- It can answer text messages sent to this Telegram bot
+- It can read images and files uploaded to this Telegram bot
+- It can combine quick split messages into one OpenAI request
+- It can keep separate saved chats and resume them through `/chat <id>`
+- It can remember user preferences saved through `/preferences`
+- It is not the official ChatGPT app
+- It does not have ChatGPT app memory, voice mode, web browsing, custom GPTs, or connectors
+- It cannot see Telegram messages outside this bot chat
+- It cannot open websites, use outside apps, control devices, or access email and calendars unless those tools are added later
 
 Important note about model names:
 

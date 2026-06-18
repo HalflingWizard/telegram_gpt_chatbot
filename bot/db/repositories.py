@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, joinedload
 
 from bot.db.models import Chat, ChatState, Message, MessageAttachment, User
+from bot.services.token_usage import ContextWindowWarning
 
 
 class UserRepository:
@@ -193,6 +195,76 @@ class ChatRepository:
         if state is None:
             return
         state.last_openai_response_id = response_id
+
+    def record_token_usage(
+        self,
+        chat_id: int,
+        input_tokens: int,
+        output_tokens: int,
+        total_tokens: int,
+        context_window_tokens: int,
+    ) -> ContextWindowWarning | None:
+        """Record token usage in chat state notes and return a new warning."""
+        state = self.session.scalar(select(ChatState).where(ChatState.chat_id == chat_id))
+        if state is None:
+            return None
+
+        notes = self._load_state_notes(state.notes)
+        usage = notes.get("token_usage", {})
+        previous_warning_level = usage.get("last_warning_level")
+
+        usage["turn_count"] = int(usage.get("turn_count", 0)) + 1
+        usage["last_input_tokens"] = input_tokens
+        usage["last_output_tokens"] = output_tokens
+        usage["last_total_tokens"] = total_tokens
+        usage["max_input_tokens"] = max(int(usage.get("max_input_tokens", 0)), input_tokens)
+        usage["cumulative_input_tokens"] = int(usage.get("cumulative_input_tokens", 0)) + input_tokens
+        usage["cumulative_output_tokens"] = int(usage.get("cumulative_output_tokens", 0)) + output_tokens
+        usage["cumulative_total_tokens"] = int(usage.get("cumulative_total_tokens", 0)) + total_tokens
+        usage["context_window_tokens"] = context_window_tokens
+
+        warning_level = self._context_warning_level(input_tokens, context_window_tokens)
+        warning = None
+        if warning_level and self._is_higher_warning_level(warning_level, previous_warning_level):
+            usage["last_warning_level"] = warning_level
+            warning = ContextWindowWarning(
+                level=warning_level,
+                input_tokens=input_tokens,
+                context_window_tokens=context_window_tokens,
+                percent_used=round((input_tokens / context_window_tokens) * 100),
+            )
+
+        notes["token_usage"] = usage
+        state.notes = json.dumps(notes, sort_keys=True)
+        return warning
+
+    def _load_state_notes(self, raw_notes: str | None) -> dict:
+        """Load JSON notes while preserving legacy free-text notes."""
+        if not raw_notes:
+            return {}
+        try:
+            loaded = json.loads(raw_notes)
+        except json.JSONDecodeError:
+            return {"legacy_notes": raw_notes}
+        return loaded if isinstance(loaded, dict) else {"legacy_notes": raw_notes}
+
+    def _context_warning_level(self, input_tokens: int, context_window_tokens: int) -> str | None:
+        """Return warning level based on context usage."""
+        if context_window_tokens <= 0:
+            return None
+        ratio = input_tokens / context_window_tokens
+        if ratio >= 0.95:
+            return "critical"
+        if ratio >= 0.85:
+            return "high"
+        if ratio >= 0.75:
+            return "medium"
+        return None
+
+    def _is_higher_warning_level(self, new_level: str, previous_level: str | None) -> bool:
+        """Return whether a warning level is higher than the previous one."""
+        levels = {"medium": 1, "high": 2, "critical": 3}
+        return levels.get(new_level, 0) > levels.get(previous_level or "", 0)
 
 
 class MessageRepository:

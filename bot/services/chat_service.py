@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from bot.db.models import Chat, Message
 from bot.db.repositories import ChatRepository, MessageRepository, UserRepository
 from bot.db.session import session_scope
+from bot.services.token_usage import ContextWindowWarning
 from bot.utils.ids import generate_chat_public_id
 from bot.utils.validators import normalize_chat_public_id
 
@@ -149,6 +150,27 @@ class ChatService:
             chat_repo.touch_chat(chat_id)
             chat_repo.set_last_openai_response_id(chat_id, openai_response_id)
             return message
+
+    def record_token_usage(
+        self,
+        chat_id: int,
+        input_tokens: int,
+        output_tokens: int,
+        total_tokens: int,
+        context_window_tokens: int,
+    ) -> ContextWindowWarning | None:
+        """Persist token usage and return a warning when context is nearly full."""
+        with session_scope(self.session_factory) as session:
+            chat_repo = ChatRepository(session)
+            warning = chat_repo.record_token_usage(
+                chat_id=chat_id,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=total_tokens,
+                context_window_tokens=context_window_tokens,
+            )
+            chat_repo.touch_chat(chat_id)
+            return warning
 
     def get_chat_for_user(self, telegram_user_id: int, chat_public_id: str) -> Chat | None:
         """Return a single chat by public ID for a Telegram user."""

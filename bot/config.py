@@ -20,6 +20,7 @@ class Settings:
     openai_main_model: str
     openai_title_model: str
     openai_reasoning_effort: str
+    openai_context_window_tokens: int
     database_url: str
     log_level: str
     openai_timeout_seconds: float
@@ -42,6 +43,7 @@ def load_settings() -> Settings:
         openai_main_model=os.getenv("OPENAI_MAIN_MODEL", "gpt-5.1"),
         openai_title_model=os.getenv("OPENAI_TITLE_MODEL", "gpt-5-mini"),
         openai_reasoning_effort=os.getenv("OPENAI_REASONING_EFFORT", "medium"),
+        openai_context_window_tokens=int(os.getenv("OPENAI_CONTEXT_WINDOW_TOKENS", "270000")),
         database_url=os.getenv("DATABASE_URL", "sqlite:///data/telegram_gpt_bot.db"),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
         openai_timeout_seconds=float(os.getenv("OPENAI_TIMEOUT_SECONDS", "90")),

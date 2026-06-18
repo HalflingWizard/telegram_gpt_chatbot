@@ -6,6 +6,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.db.models import Chat
 from bot.services.chat_service import TranscriptMessage
+from bot.services.token_usage import ContextWindowWarning
 from bot.utils.time import format_chat_timestamp
 
 
@@ -22,14 +23,42 @@ class FormattingService:
             "/currentchat\nShow the active chat\n\n"
             "/deletechat <id>\nDelete a chat\n\n"
             "/deleteall\nDelete all your chats and preferences\n\n"
-            "/preferences\nOpen your preferences menu"
+            "/preferences\nOpen your preferences menu\n\n"
+            "How this bot works\n"
+            "- I keep separate saved chats. Use /newchat when you start a new topic.\n"
+            "- I can read text, images, and files you send here.\n"
+            "- If you send several messages quickly, I combine them into one request.\n"
+            "- I track token use and warn you when this chat gets close to the model context limit.\n\n"
+            "Important limits\n"
+            "- I am not the official ChatGPT app.\n"
+            "- I do not have ChatGPT app memory, voice mode, web browsing, custom GPTs, or connectors.\n"
+            "- I cannot see your Telegram history outside messages sent to this bot.\n"
+            "- I cannot open websites or use outside apps unless this bot is changed to add those tools.\n"
+            "- If I cannot do something, I should say so and suggest what you can send here instead."
         )
 
     def format_start_text(self) -> str:
         """Return the start message shown to users."""
         return (
             "👋 Welcome. This bot is private and only works for approved Telegram users.\n\n"
-            "💬 Use /newchat to begin, /chat <id> to resume a saved thread, and /listchats to browse."
+            "💬 Use /newchat to begin, /chat <id> to resume a saved thread, and /listchats to browse.\n\n"
+            "Use /help to see what this bot can and cannot do."
+        )
+
+    def format_context_window_warning(self, warning: ContextWindowWarning) -> str:
+        """Return a context-window warning for the user."""
+        if warning.level == "critical":
+            return (
+                "⚠️ This chat is almost out of context window.\n\n"
+                "That means I may soon stop remembering earlier details or respond less reliably.\n"
+                f"This turn used about {warning.percent_used}% of the configured context limit.\n\n"
+                "You may want to start a new chat with /newchat and paste a short summary there."
+            )
+        return (
+            "⚠️ This chat is getting close to the model context window.\n\n"
+            "That means I may soon have trouble remembering earlier details or responding properly.\n"
+            f"This turn used about {warning.percent_used}% of the configured context limit.\n\n"
+            "You may want to continue in a new chat soon."
         )
 
     def format_current_chat(self, chat: Chat | None) -> str:

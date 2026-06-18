@@ -16,7 +16,11 @@ class FakeResponsesAPI:
     async def create(self, **kwargs):
         """Record the request and return a fake response."""
         self.calls.append(kwargs)
-        return SimpleNamespace(output_text="done", id="resp_123")
+        return SimpleNamespace(
+            output_text="done",
+            id="resp_123",
+            usage=SimpleNamespace(input_tokens=100, output_tokens=20, total_tokens=120),
+        )
 
 
 async def test_file_input_uses_only_file_id_and_includes_preferences() -> None:
@@ -29,6 +33,7 @@ async def test_file_input_uses_only_file_id_and_includes_preferences() -> None:
         openai_main_model="gpt-5.1",
         openai_title_model="gpt-5-mini",
         openai_reasoning_effort="medium",
+        openai_context_window_tokens=270000,
         database_url="sqlite:///:memory:",
         log_level="INFO",
         openai_timeout_seconds=30,
@@ -53,6 +58,9 @@ async def test_file_input_uses_only_file_id_and_includes_preferences() -> None:
     )
 
     assert reply.text == "done"
+    assert reply.usage.input_tokens == 100
+    assert reply.usage.output_tokens == 20
+    assert reply.usage.total_tokens == 120
     payload = fake_responses.calls[0]
     assert "Reply briefly" in payload["instructions"]
     file_item = payload["input"][0]["content"][1]

@@ -16,7 +16,17 @@ LOGGER = logging.getLogger(__name__)
 
 DEVELOPER_INSTRUCTIONS = (
     "You are a private Telegram assistant. Answer the user directly and helpfully. "
-    "Do not reveal hidden reasoning. Return only the final answer."
+    "Do not reveal hidden reasoning. Return only the final answer.\n\n"
+    "You are running inside a custom Telegram bot, not the official ChatGPT app. "
+    "You can respond to text, images, and files that the user sends to this bot. "
+    "You can continue saved chats through the bot's stored conversation state. "
+    "You can follow user preferences saved in this bot.\n\n"
+    "You do not have ChatGPT app memory, voice mode, web browsing, custom GPTs, connectors, "
+    "email, calendar access, file system access, device control, or access to Telegram messages "
+    "outside this bot chat. If the user asks for something this bot cannot do, apologize briefly, "
+    "explain the limit in plain language, and suggest what they can paste or upload here instead.\n\n"
+    "The bot may warn the user when a chat is close to the model context window. If that happens, "
+    "help the user make a short summary and continue in a new chat."
 )
 
 
@@ -31,11 +41,21 @@ class OpenAIInputAttachment:
 
 
 @dataclass
+class TokenUsage:
+    """Token usage returned by an OpenAI response."""
+
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+
+
+@dataclass
 class AssistantReply:
     """Assistant text plus the response ID used for continuation."""
 
     text: str
     response_id: str | None
+    usage: TokenUsage | None = None
 
 
 class OpenAIService:
@@ -102,7 +122,11 @@ class OpenAIService:
         except APIError as exc:
             raise OpenAITurnError(str(exc)) from exc
 
-        return AssistantReply(text=(response.output_text or "").strip(), response_id=response.id)
+        return AssistantReply(
+            text=(response.output_text or "").strip(),
+            response_id=response.id,
+            usage=_extract_token_usage(response),
+        )
 
     async def generate_title(self, first_message_text: str) -> str:
         """Generate a short conversation title with a smaller model."""
@@ -133,3 +157,26 @@ class OpenAITurnError(RuntimeError):
 
 class OpenAITurnTimeoutError(OpenAITurnError):
     """Raised when an OpenAI request times out."""
+
+
+def _extract_token_usage(response) -> TokenUsage | None:
+    """Return token usage from a Responses API object when available."""
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return None
+
+    input_tokens = getattr(usage, "input_tokens", None)
+    output_tokens = getattr(usage, "output_tokens", None)
+    total_tokens = getattr(usage, "total_tokens", None)
+    if isinstance(usage, dict):
+        input_tokens = usage.get("input_tokens")
+        output_tokens = usage.get("output_tokens")
+        total_tokens = usage.get("total_tokens")
+
+    if input_tokens is None or output_tokens is None or total_tokens is None:
+        return None
+    return TokenUsage(
+        input_tokens=int(input_tokens),
+        output_tokens=int(output_tokens),
+        total_tokens=int(total_tokens),
+    )
