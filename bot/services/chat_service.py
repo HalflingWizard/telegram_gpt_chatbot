@@ -163,6 +163,11 @@ class ChatService:
             chat_repo.set_last_openai_response_id(chat_id, openai_response_id)
             return message
 
+    def clear_last_openai_response_id(self, chat_id: int) -> None:
+        """Reset a broken OpenAI response chain for a chat."""
+        with session_scope(self.session_factory) as session:
+            ChatRepository(session).set_last_openai_response_id(chat_id, None)
+
     def record_token_usage(
         self,
         chat_id: int,

@@ -236,6 +236,7 @@ async def _respond_to_user_turn(
     """Send a buffered user turn to OpenAI and reply in Telegram."""
     active_persona = services.chat_service.get_active_persona_for_chat(active_chat.id)
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+    previous_response_id = active_chat.state.last_openai_response_id
     try:
         assistant_reply = await services.openai_service.create_response(
             prompt_text=prompt_text,
@@ -249,7 +250,7 @@ async def _respond_to_user_turn(
                 for item in attachment_records
                 if item.openai_file_id
             ],
-            previous_response_id=active_chat.state.last_openai_response_id,
+            previous_response_id=previous_response_id,
             user_preferences=services.auth_service.get_preferences(update.effective_user.id),
             persona_name=active_persona.name if active_persona else None,
             persona_prompt=active_persona.system_prompt if active_persona else None,
@@ -266,21 +267,67 @@ async def _respond_to_user_turn(
         )
         await update.effective_message.reply_text("⏳ The model timed out. Please try again.")
         return
-    except services.openai_error:
-        services.log_event(
-            logging.ERROR,
-            action="user_turn_openai_error",
-            update=update,
-            success=False,
-            message="OpenAI user turn failed",
-            chat_public_id=active_chat.chat_public_id,
-            chat_db_id=active_chat.id,
-            exc_info=True,
-        )
-        await update.effective_message.reply_text(
-            "⚠️ The bot could not get a response right now. Please try again."
-        )
-        return
+    except services.openai_error as exc:
+        if previous_response_id and _is_response_chain_error(exc):
+            services.log_event(
+                logging.WARNING,
+                action="user_turn_response_chain_reset",
+                update=update,
+                success=False,
+                message="OpenAI response chain failed. Retrying without previous response.",
+                chat_public_id=active_chat.chat_public_id,
+                chat_db_id=active_chat.id,
+                exc_info=True,
+            )
+            services.chat_service.clear_last_openai_response_id(active_chat.id)
+            try:
+                assistant_reply = await services.openai_service.create_response(
+                    prompt_text=prompt_text,
+                    attachments=[
+                        services.openai_input_attachment(
+                            attachment_type=item.attachment_type,
+                            openai_file_id=item.openai_file_id,
+                            caption=item.caption,
+                            filename=item.filename,
+                        )
+                        for item in attachment_records
+                        if item.openai_file_id
+                    ],
+                    previous_response_id=None,
+                    user_preferences=services.auth_service.get_preferences(update.effective_user.id),
+                    persona_name=active_persona.name if active_persona else None,
+                    persona_prompt=active_persona.system_prompt if active_persona else None,
+                )
+            except services.openai_error:
+                services.log_event(
+                    logging.ERROR,
+                    action="user_turn_openai_error",
+                    update=update,
+                    success=False,
+                    message="OpenAI user turn failed after response chain reset",
+                    chat_public_id=active_chat.chat_public_id,
+                    chat_db_id=active_chat.id,
+                    exc_info=True,
+                )
+                await update.effective_message.reply_text(
+                    "⚠️ The bot could not get a response right now. Please try again."
+                )
+                return
+        else:
+            services.log_event(
+                logging.ERROR,
+                action="user_turn_openai_error",
+                update=update,
+                success=False,
+                message="OpenAI user turn failed",
+                chat_public_id=active_chat.chat_public_id,
+                chat_db_id=active_chat.id,
+                exc_info=True,
+            )
+            await update.effective_message.reply_text(
+                "⚠️ The bot could not get a response right now. Please try again."
+            )
+            return
 
     final_text = assistant_reply.text or "I could not produce a response."
     visible_text = services.formatting_service.format_assistant_reply(final_text, active_persona)
@@ -312,3 +359,13 @@ async def _respond_to_user_turn(
         await update.effective_message.reply_text(
             services.formatting_service.format_context_window_warning(context_warning)
         )
+
+
+def _is_response_chain_error(exc: Exception) -> bool:
+    """Return whether an OpenAI error looks like a broken previous response."""
+    message = str(exc).lower()
+    return (
+        "previous_response_id" in message
+        or "previous response" in message
+        or ("response" in message and "not found" in message)
+    )

@@ -97,6 +97,7 @@ class FakeMediaServices:
             record_token_usage=Mock(return_value=None),
             get_active_persona_for_chat=Mock(return_value=None),
             update_title=Mock(),
+            clear_last_openai_response_id=Mock(),
         )
         self.settings = SimpleNamespace(openai_context_window_tokens=100)
         self.auth_service = SimpleNamespace(get_preferences=lambda user_id: "Reply briefly")
@@ -299,6 +300,29 @@ async def test_context_warning_is_sent_after_reply(monkeypatch) -> None:
     )
     assert update.effective_message.reply_text.await_args_list[0].args == ("General assistant\nanswer",)
     assert update.effective_message.reply_text.await_args_list[1].args == ("context-warning:high:86",)
+
+
+async def test_broken_response_chain_retries_without_previous_response(monkeypatch) -> None:
+    """A stale OpenAI response ID should be reset and retried once."""
+    monkeypatch.setattr(media_messages, "USER_TURN_BUFFER_SECONDS", 0.01)
+    services = FakeMediaServices()
+    services.openai_service.create_response.side_effect = [
+        RuntimeError("previous_response_id was not found"),
+        SimpleNamespace(text="fresh answer", response_id="resp_fresh", usage=None),
+    ]
+    context = make_media_context(services)
+    update = make_text_update(message_id=11, text="hello")
+
+    await handle_text_message(update, context)
+    await asyncio.gather(*context.application.created_tasks, return_exceptions=True)
+
+    assert services.openai_service.create_response.await_count == 2
+    first_call = services.openai_service.create_response.await_args_list[0].kwargs
+    second_call = services.openai_service.create_response.await_args_list[1].kwargs
+    assert first_call["previous_response_id"] == "resp_prev"
+    assert second_call["previous_response_id"] is None
+    services.chat_service.clear_last_openai_response_id.assert_called_once_with(1)
+    update.effective_message.reply_text.assert_awaited_once_with("General assistant\nfresh answer")
 
 
 async def test_photo_media_group_uses_one_openai_call(monkeypatch) -> None:
