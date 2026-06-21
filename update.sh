@@ -53,6 +53,7 @@ restore_file() {
 
 preserve_file ".env"
 preserve_file ".env.local"
+preserve_file "config.env"
 preserve_file "data/telegram_gpt_bot.db"
 
 echo "Fetching latest code from GitHub."
@@ -63,6 +64,7 @@ git pull --ff-only --autostash origin "$current_branch"
 
 restore_file ".env"
 restore_file ".env.local"
+restore_file "config.env"
 restore_file "data/telegram_gpt_bot.db"
 
 echo "Update complete. Local config and database files were preserved."

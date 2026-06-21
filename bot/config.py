@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
+import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -30,7 +31,12 @@ class Settings:
 
 def load_settings() -> Settings:
     """Load, validate, and return application settings."""
-    load_dotenv()
+    repo_root = Path(__file__).resolve().parent.parent
+    config_path = repo_root / "config.env"
+    if config_path.exists():
+        load_dotenv(config_path)
+    else:
+        load_dotenv(repo_root / ".env")
 
     telegram_bot_token = _require_env("TELEGRAM_BOT_TOKEN")
     openai_api_key = _require_env("OPENAI_API_KEY")

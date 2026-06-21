@@ -53,7 +53,8 @@ Deferred or partial
 ```text
 telegram_gpt_chatbot/
 ├── README.md
-├── .env.example
+├── config.env.example
+├── run.sh
 ├── requirements.txt
 ├── pyproject.toml
 ├── main.py
@@ -107,29 +108,28 @@ What each major area owns:
 
 ## 5. Local setup
 
-Create a virtual environment and install dependencies:
+Quick start
+
+```bash
+bash run.sh
+```
+
+The first run creates `config.env` from `config.env.example`.
+Edit `config.env` and run the same command again.
+
+Manual setup is still supported
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-```
-
-Create the environment file:
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` and fill in the required secrets and user IDs.
-
-Start the bot:
-
-```bash
+cp config.env.example config.env
 python main.py
 ```
 
-Update the local repo without recreating `.env` or the local SQLite database.
+The app reads `config.env` first. If it does not exist, it falls back to `.env`.
+
+Update the local repo without recreating `config.env`, `.env`, or the local SQLite database.
 
 ```bash
 bash update.sh
@@ -148,7 +148,7 @@ pytest
 | `TELEGRAM_BOT_TOKEN` | Yes | Bot token from BotFather |
 | `OPENAI_API_KEY` | Yes | OpenAI API key for Responses and Files API calls |
 | `ALLOWED_TELEGRAM_USER_IDS` | Yes | Comma-separated whitelist of Telegram numeric user IDs |
-| `OPENAI_MAIN_MODEL` | Yes | Main assistant model name; defaults to `gpt-5.1` in `.env.example` |
+| `OPENAI_MAIN_MODEL` | Yes | Main assistant model name; defaults to `gpt-5.1` in `config.env.example` |
 | `OPENAI_TITLE_MODEL` | Yes | Lower-cost model for title generation; defaults to `gpt-5-mini` |
 | `OPENAI_REASONING_EFFORT` | Yes | Reasoning budget for the main assistant; defaults to `medium` |
 | `OPENAI_CONTEXT_WINDOW_TOKENS` | Yes | Configured context window used for friendly warnings; defaults to `270000` |
@@ -251,7 +251,7 @@ Important note about model names:
 
 - The original project brief asked for `gpt-5.4`
 - On April 17, 2026, the public OpenAI docs I checked still documented the Responses API and GPT-5 reasoning models, but the public model references I found listed `gpt-5.1` and `gpt-5`, not `gpt-5.4`
-- For that reason, this repository keeps the model fully configurable and uses `gpt-5.1` in `.env.example`
+- For that reason, this repository keeps the model fully configurable and uses `gpt-5.1` in `config.env.example`
 - If `gpt-5.4` is available in your account or your organization’s docs, set `OPENAI_MAIN_MODEL=gpt-5.4`
 
 OpenAI references:
