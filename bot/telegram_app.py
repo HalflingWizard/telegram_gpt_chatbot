@@ -47,6 +47,7 @@ from bot.services.openai_service import (
     OpenAITurnTimeoutError,
 )
 from bot.services.telegram_file_service import TelegramFileService, TelegramFileTooLargeError
+from bot.services.telegram_rich_text_service import TelegramRichTextService
 from bot.services.title_service import TitleService
 from bot.service_locator import SERVICES_KEY
 
@@ -64,6 +65,7 @@ class ServiceContainer:
     openai_service: OpenAIService
     title_service: TitleService
     telegram_file_service: TelegramFileService
+    telegram_rich_text_service: TelegramRichTextService
     formatting_service: FormattingService
     openai_error: type[OpenAITurnError]
     openai_timeout_error: type[OpenAITurnTimeoutError]
@@ -139,6 +141,7 @@ def build_application(settings: Settings | None = None) -> Application:
     openai_service = OpenAIService(settings)
     title_service = TitleService(openai_service)
     telegram_file_service = TelegramFileService(settings.telegram_file_size_limit_bytes)
+    telegram_rich_text_service = TelegramRichTextService()
     formatting_service = FormattingService()
 
     application = ApplicationBuilder().token(settings.telegram_bot_token).build()
@@ -149,6 +152,7 @@ def build_application(settings: Settings | None = None) -> Application:
         openai_service=openai_service,
         title_service=title_service,
         telegram_file_service=telegram_file_service,
+        telegram_rich_text_service=telegram_rich_text_service,
         formatting_service=formatting_service,
         openai_error=OpenAITurnError,
         openai_timeout_error=OpenAITurnTimeoutError,

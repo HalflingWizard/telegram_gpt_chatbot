@@ -237,23 +237,27 @@ async def _respond_to_user_turn(
     active_persona = services.chat_service.get_active_persona_for_chat(active_chat.id)
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     previous_response_id = active_chat.state.last_openai_response_id
+    input_attachments = [
+        services.openai_input_attachment(
+            attachment_type=item.attachment_type,
+            openai_file_id=item.openai_file_id,
+            caption=item.caption,
+            filename=item.filename,
+        )
+        for item in attachment_records
+        if item.openai_file_id
+    ]
+    streamer = await _start_rich_streamer(update, context, services, active_persona)
     try:
-        assistant_reply = await services.openai_service.create_response(
+        assistant_reply = await _create_openai_reply(
+            services=services,
             prompt_text=prompt_text,
-            attachments=[
-                services.openai_input_attachment(
-                    attachment_type=item.attachment_type,
-                    openai_file_id=item.openai_file_id,
-                    caption=item.caption,
-                    filename=item.filename,
-                )
-                for item in attachment_records
-                if item.openai_file_id
-            ],
+            attachments=input_attachments,
             previous_response_id=previous_response_id,
             user_preferences=services.auth_service.get_preferences(update.effective_user.id),
             persona_name=active_persona.name if active_persona else None,
             persona_prompt=active_persona.system_prompt if active_persona else None,
+            streamer=streamer,
         )
     except services.openai_timeout_error:
         services.log_event(
@@ -281,22 +285,15 @@ async def _respond_to_user_turn(
             )
             services.chat_service.clear_last_openai_response_id(active_chat.id)
             try:
-                assistant_reply = await services.openai_service.create_response(
+                assistant_reply = await _create_openai_reply(
+                    services=services,
                     prompt_text=prompt_text,
-                    attachments=[
-                        services.openai_input_attachment(
-                            attachment_type=item.attachment_type,
-                            openai_file_id=item.openai_file_id,
-                            caption=item.caption,
-                            filename=item.filename,
-                        )
-                        for item in attachment_records
-                        if item.openai_file_id
-                    ],
+                    attachments=input_attachments,
                     previous_response_id=None,
                     user_preferences=services.auth_service.get_preferences(update.effective_user.id),
                     persona_name=active_persona.name if active_persona else None,
                     persona_prompt=active_persona.system_prompt if active_persona else None,
+                    streamer=streamer,
                 )
             except services.openai_error:
                 services.log_event(
@@ -354,7 +351,7 @@ async def _respond_to_user_turn(
         chat_public_id=active_chat.chat_public_id,
         chat_db_id=active_chat.id,
     )
-    await update.effective_message.reply_text(visible_text)
+    await _send_final_reply(update, context, services, visible_text)
     if context_warning:
         await update.effective_message.reply_text(
             services.formatting_service.format_context_window_warning(context_warning)
@@ -369,3 +366,70 @@ def _is_response_chain_error(exc: Exception) -> bool:
         or "previous response" in message
         or ("response" in message and "not found" in message)
     )
+
+
+async def _create_openai_reply(
+    services,
+    prompt_text: str | None,
+    attachments: list,
+    previous_response_id: str | None,
+    user_preferences: str | None,
+    persona_name: str | None,
+    persona_prompt: str | None,
+    streamer,
+):
+    """Use streaming when available, with the old create call as fallback."""
+    create_streaming = getattr(services.openai_service, "create_response_streaming", None)
+    if create_streaming:
+        reply = await create_streaming(
+            prompt_text=prompt_text,
+            attachments=attachments,
+            previous_response_id=previous_response_id,
+            user_preferences=user_preferences,
+            persona_name=persona_name,
+            persona_prompt=persona_prompt,
+            on_text_delta=streamer.add_delta if streamer else None,
+        )
+        if streamer:
+            await streamer.flush()
+        return reply
+    return await services.openai_service.create_response(
+        prompt_text=prompt_text,
+        attachments=attachments,
+        previous_response_id=previous_response_id,
+        user_preferences=user_preferences,
+        persona_name=persona_name,
+        persona_prompt=persona_prompt,
+    )
+
+
+async def _start_rich_streamer(update: Update, context: ContextTypes.DEFAULT_TYPE, services, active_persona):
+    """Start a Telegram rich draft stream when Bot API 10.1 helpers are available."""
+    rich_service = getattr(services, "telegram_rich_text_service", None)
+    if rich_service is None or not _is_private_chat(update):
+        return None
+    label = active_persona.name if active_persona else "General assistant"
+    draft_id = max(1, int(update.effective_message.message_id))
+    streamer = rich_service.make_streamer(context.bot, update.effective_chat.id, draft_id, label)
+    await streamer.start()
+    return streamer
+
+
+async def _send_final_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, services, visible_text: str) -> None:
+    """Send the final reply as a rich message, then fall back to plain text."""
+    rich_service = getattr(services, "telegram_rich_text_service", None)
+    if rich_service:
+        sent = await rich_service.send_rich_message(
+            context.bot,
+            chat_id=update.effective_chat.id,
+            markdown=visible_text,
+            reply_to_message_id=update.effective_message.message_id,
+        )
+        if sent:
+            return
+    await update.effective_message.reply_text(visible_text)
+
+
+def _is_private_chat(update: Update) -> bool:
+    """Return whether rich message drafts may be sent to this chat."""
+    return getattr(update.effective_chat, "type", "private") == "private"

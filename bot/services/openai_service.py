@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -82,6 +83,75 @@ class OpenAIService:
         persona_prompt: str | None = None,
     ) -> AssistantReply:
         """Create an assistant response for the current user turn."""
+        request = self._build_response_request(
+            prompt_text=prompt_text,
+            attachments=attachments,
+            previous_response_id=previous_response_id,
+            user_preferences=user_preferences,
+            persona_name=persona_name,
+            persona_prompt=persona_prompt,
+        )
+        try:
+            response = await self.client.responses.create(**request)
+        except APITimeoutError as exc:
+            raise OpenAITurnTimeoutError("OpenAI request timed out.") from exc
+        except APIError as exc:
+            raise OpenAITurnError(str(exc)) from exc
+
+        return AssistantReply(
+            text=(response.output_text or "").strip(),
+            response_id=response.id,
+            usage=_extract_token_usage(response),
+        )
+
+    async def create_response_streaming(
+        self,
+        prompt_text: str | None,
+        attachments: list[OpenAIInputAttachment] | None,
+        previous_response_id: str | None,
+        user_preferences: str | None = None,
+        persona_name: str | None = None,
+        persona_prompt: str | None = None,
+        on_text_delta: Callable[[str], Awaitable[None]] | None = None,
+    ) -> AssistantReply:
+        """Create an assistant response and forward text deltas as they arrive."""
+        request = self._build_response_request(
+            prompt_text=prompt_text,
+            attachments=attachments,
+            previous_response_id=previous_response_id,
+            user_preferences=user_preferences,
+            persona_name=persona_name,
+            persona_prompt=persona_prompt,
+        )
+        try:
+            async with self.client.responses.stream(**request) as stream:
+                async for event in stream:
+                    if getattr(event, "type", None) == "response.output_text.delta":
+                        delta = getattr(event, "delta", "")
+                        if delta and on_text_delta:
+                            await on_text_delta(delta)
+                response = await stream.get_final_response()
+        except APITimeoutError as exc:
+            raise OpenAITurnTimeoutError("OpenAI request timed out.") from exc
+        except APIError as exc:
+            raise OpenAITurnError(str(exc)) from exc
+
+        return AssistantReply(
+            text=(response.output_text or "").strip(),
+            response_id=response.id,
+            usage=_extract_token_usage(response),
+        )
+
+    def _build_response_request(
+        self,
+        prompt_text: str | None,
+        attachments: list[OpenAIInputAttachment] | None,
+        previous_response_id: str | None,
+        user_preferences: str | None = None,
+        persona_name: str | None = None,
+        persona_prompt: str | None = None,
+    ) -> dict[str, Any]:
+        """Build the Responses API request payload for a user turn."""
         content: list[dict[str, Any]] = []
         if prompt_text:
             content.append({"type": "input_text", "text": prompt_text})
@@ -119,24 +189,13 @@ class OpenAIService:
                 f"{user_preferences}\n\nFollow these preferences unless they conflict with safety."
             )
 
-        try:
-            response = await self.client.responses.create(
-                model=self.settings.openai_main_model,
-                reasoning={"effort": self.settings.openai_reasoning_effort},
-                instructions=instructions,
-                previous_response_id=previous_response_id,
-                input=[{"role": "user", "content": content}],
-            )
-        except APITimeoutError as exc:
-            raise OpenAITurnTimeoutError("OpenAI request timed out.") from exc
-        except APIError as exc:
-            raise OpenAITurnError(str(exc)) from exc
-
-        return AssistantReply(
-            text=(response.output_text or "").strip(),
-            response_id=response.id,
-            usage=_extract_token_usage(response),
-        )
+        return {
+            "model": self.settings.openai_main_model,
+            "reasoning": {"effort": self.settings.openai_reasoning_effort},
+            "instructions": instructions,
+            "previous_response_id": previous_response_id,
+            "input": [{"role": "user", "content": content}],
+        }
 
     async def generate_title(self, first_message_text: str) -> str:
         """Generate a short conversation title with a smaller model."""
